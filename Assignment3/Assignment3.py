@@ -12,8 +12,6 @@
 #     name: python3
 # ---
 
-# %%
-
 # %% [markdown] id="8FpQk1OWs2CG"
 # # Imports
 
@@ -22,7 +20,9 @@ from sklearn.datasets import load_breast_cancer
 from sklearn.datasets import load_digits
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from numpy.linalg import slogdet, inv
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import os
@@ -229,7 +229,7 @@ class NaiveBayes():
 # ## Decision Trees
 
 # %% [markdown] id="Pt-R_3h2tacV"
-# ## Loading & Splitting Dataset
+# ### Loading & Splitting Dataset
 
 # %% colab={"base_uri": "https://localhost:8080/"} id="Ul72e1Fhtjk8" outputId="13bbdfb8-6129-4961-b1d2-301031ff4560"
 data = load_breast_cancer()
@@ -252,7 +252,7 @@ print("Test size:", X_test.shape)
 
 
 # %% [markdown] id="0bdIrpt8tq7l"
-# ## Entropy calculation
+# ### Entropy calculation
 
 # %% id="ydGCEdsltwUe"
 def entropy(y):
@@ -262,7 +262,7 @@ def entropy(y):
 
 
 # %% [markdown] id="Ud9EWWH0t7ZF"
-# ## Information Gain Calculation
+# ### Information Gain Calculation
 
 # %% id="P0SONj7Ct9Cd"
 def information_gain(y_parent, y_left, y_right):
@@ -273,10 +273,10 @@ def information_gain(y_parent, y_left, y_right):
 
 
 # %% [markdown] id="EdFjDdgRt_9f"
-# ## Finding The Best Threshold to Split
+# ### Finding The Best Threshold to Split
 
 # %% [markdown] id="SAn3-cGquCV2"
-# ### Finding the best threshold for a given feature
+# #### Finding the best threshold for a given feature
 
 # %% id="5tOs7vJEuFRd"
 def best_split_for_feature(X_column, y):
@@ -306,7 +306,7 @@ def best_split_for_feature(X_column, y):
 
 
 # %% [markdown] id="ZxQOReF9uI3l"
-# ### Finding the best feature to split on
+# #### Finding the best feature to split on
 
 # %% id="TN_5IbcnuLVM"
 def best_split_overall(X, y):
@@ -324,10 +324,10 @@ def best_split_overall(X, y):
 
 
 # %% [markdown] id="NQ5wBR5xuNRm"
-# ## Decision Tree Implementation
+# ### Decision Tree Implementation
 
 # %% [markdown] id="ovqt6lpbuRnv"
-# ### Node Class Implementation
+# #### Node Class Implementation
 
 # %% id="qRaURTbXuPRO"
 @dataclass
@@ -343,11 +343,11 @@ class Node:
 
 
 # %% [markdown] id="2HH1cuYVuV6t"
-# ### DecisionTree Class Implementation
+# #### DecisionTree Class Implementation
 
 # %% id="W-41Zt-yun5V"
 class DecisionTreeClassifier:
-    def __init__(self, max_depth=5, min_samples_split=2):
+    def __init__(self, max_depth=8, min_samples_split=5):
         self.max_depth = max_depth
         self.min_samples_split = min_samples_split
         self.root = None
@@ -409,6 +409,119 @@ class DecisionTreeClassifier:
 
     def predict(self, X):
         return np.array([self._predict_one(x, self.root) for x in X])
+
+
+# %% [markdown]
+# ### Hyperparameter Tuning
+
+# %% [markdown]
+# #### Maximum Grid Depth Tuning
+
+# %%
+depths = [2, 4, 6, 8, 10]
+depth_accuracies = []
+best_depth = -1
+best_depth_acc = -1
+
+for depth in depths:
+    dec_tree = DecisionTreeClassifier(max_depth=depth)
+    dec_tree.fit(X_train, y_train)
+    predictions = dec_tree.predict(X_val)
+    acc = accuracy_score(y_val, predictions)
+    depth_accuracies.append(acc)
+    
+    print(f"Depth: {depth}, Validation Accuracy: {acc:.4f}")
+
+    if acc > best_depth_acc:
+        best_depth_acc = acc
+        best_depth = depth
+
+print(f"Best Depth: {best_depth}, Validation Accuracy: {best_depth_acc:.4f}")
+
+
+# %%
+plt.plot(depths, depth_accuracies)
+plt.xlabel("Max Depth")
+plt.ylabel("Validation Accuracy")
+plt.title("Decision Tree Depth vs Accuracy")
+plt.grid(True)
+plt.show()
+
+# %% [markdown]
+# #### Minimum Samples For Splitting Tuning
+
+# %%
+min_samples = [2, 5, 10]
+min_samples_accuracies = []
+best_min_samples = -1
+best_min_samples_acc = -1
+
+for min_samples in min_samples:
+    dec_tree = DecisionTreeClassifier(min_samples_split=min_samples)
+    dec_tree.fit(X_train, y_train)
+    predictions = dec_tree.predict(X_val)
+    acc = accuracy_score(y_val, predictions)
+    min_samples_accuracies.append(acc)
+    
+    print(f"Min Samples Split: {min_samples}, Validation Accuracy: {acc:.4f}")
+
+    if acc > best_min_samples_acc:
+        best_min_samples_acc = acc
+        best_min_samples = min_samples
+
+print(f"Best Min Samples Split: {best_min_samples}, Validation Accuracy: {best_min_samples_acc:.4f}")
+
+# %%
+plt.plot(min_samples, min_samples_accuracies)
+plt.xlabel("Minimum Samples Split")
+plt.ylabel("Validation Accuracy")
+plt.title("Decision Tree Minimum Samples Split vs Accuracy")
+plt.grid(True)
+plt.show()
+
+# %% [markdown]
+# #### Combined Hyperparameter Tuning
+
+# %%
+best_combined_depth = -1
+best_combined_min_samples = -1
+best_combined_acc = -1
+
+for depth in depths:
+    for min_samples in min_samples:
+        dec_tree = DecisionTreeClassifier(max_depth=depth, min_samples_split=min_samples)
+        dec_tree.fit(X_train, y_train)
+        predictions = dec_tree.predict(X_val)
+        acc = accuracy_score(y_val, predictions)
+        
+        print(f"Depth: {depth}, Min Samples Split: {min_samples}, Validation Accuracy: {acc:.4f}")
+
+        if acc > best_combined_acc:
+            best_combined_acc = acc
+            best_combined_depth = depth
+            best_combined_min_samples = min_samples
+
+print(f"Best Combined Hyperparameters:\nDepth: {best_combined_depth}, Min Samples Split: {best_combined_min_samples}, Validation Accuracy: {best_combined_acc:.4f}")   
+
+# %% [markdown]
+# ### Evaluation On Test Dataset
+
+# %%
+X_final_train = np.vstack((X_train, X_val))
+y_final_train = np.hstack((y_train, y_val))
+
+final_dec_tree = DecisionTreeClassifier(max_depth=best_combined_depth, min_samples_split=best_combined_min_samples)
+final_dec_tree.fit(X_final_train, y_final_train)
+final_predictions = final_dec_tree.predict(X_test)
+
+print("Test Set Evaluation:")
+print(f"Accuracy: {accuracy_score(y_test, final_predictions):.4f}")
+
+print("Classification Report:")
+print(classification_report(y_test, final_predictions))
+
+print("Confusion Matrix:")
+print(confusion_matrix(y_test, final_predictions))
 
 # %% [markdown] id="unhx9Ykds1e_"
 # # Part D
