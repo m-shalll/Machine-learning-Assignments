@@ -12,26 +12,28 @@
 #     name: python3
 # ---
 
-# %% [markdown]
+# %% [markdown] id="8FpQk1OWs2CG"
 # # Imports
 
-# %%
+# %% id="OJi9h1PqtBbL"
 from sklearn.datasets import load_breast_cancer
 from sklearn.datasets import load_digits
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from numpy.linalg import slogdet, inv
 import numpy as np
+import pandas as pd
+import os
 from dataclasses import dataclass, field
 from typing import Optional, Any, Dict
 
-# %% [markdown]
+# %% [markdown] id="0v2yiieTs16d"
 # # Part A
 
-# %% [markdown]
+# %% [markdown] id="zBOt-O0tvbh-"
 # ## A1. Dataset and Setup
 
-# %%
+# %% id="XUWgbn29vcNl"
 digits = load_digits()
 X = digits.data    # shape (1797, 64)
 y = digits.target  # labels 0–9
@@ -121,6 +123,102 @@ def predict(X, pi, mu, Sigma_reg):
 
 # %% [markdown] id="vyKmdrLqs1wu"
 # # Part B
+
+# %% id="THN-DXSMvf63"
+path = kagglehub.dataset_download("uciml/adult-census-income")
+
+csv_file = "adult.csv"
+df = pd.read_csv(os.path.join(path, csv_file))
+
+categorical_features = [
+    'workclass',  'education', 'marital.status', 'occupation',
+    'relationship', 'race', 'sex'
+]
+target = 'income'
+
+X_arr = np.empty((len(df), len(categorical_features)), dtype=int)
+label_encoders = {}
+
+for i, col in enumerate(categorical_features):
+    le = LabelEncoder()
+    X_arr[:, i] = le.fit_transform(df[col].astype(str))
+    label_encoders[col] = le
+
+y_arr = LabelEncoder().fit_transform(df[target].astype(str))
+
+X_train, X_temp, y_train, y_temp = train_test_split(X_arr, y_arr, test_size=0.3, stratify=y_arr, random_state=42)
+X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.5, stratify=y_temp, random_state=42)
+
+print(f"Data Loaded: Train {X_train.shape}, Val {X_val.shape}, Test {X_test.shape}")
+
+
+# %% id="1oTe9bMzJ5Ax"
+class NaiveBayes():
+    def __init__(self, alpha=1.0):
+        self.alpha = alpha
+
+    def fit(self, X, y):
+        self.X, self.y = X, y
+        self.classes = np.unique(y)
+        self.parameters = []
+        self.total_samples = len(y)
+        self.num_classes = len(self.classes)
+
+        for i, c in enumerate(self.classes):
+            X_where_c = X[np.where(y == c)]
+            class_count = X_where_c.shape[0]
+
+            self.parameters.append([])
+
+            for col_idx, col in enumerate(X_where_c.T):
+                all_feature_values = np.unique(X[:, col_idx])
+                num_feature_values = len(all_feature_values)
+
+                values, counts = np.unique(col, return_counts=True)
+                counts_dict = dict(zip(values, counts))
+
+                denominator = class_count + (self.alpha * num_feature_values)
+
+                probs = {}
+                for val in all_feature_values:
+                    count = counts_dict.get(val, 0)
+                    probs[val] = (count + self.alpha) / denominator
+
+                unseen_prob = (0 + self.alpha) / denominator
+
+                parameters = {"probs": probs, "unseen_prob": unseen_prob}
+                self.parameters[i].append(parameters)
+
+    def _calculate_likelihood(self, params, x):
+        probs = params["probs"]
+        unseen_prob = params["unseen_prob"]
+
+        return probs.get(x, unseen_prob)
+
+    def _calculate_prior(self, c):
+        count_class_k = np.sum(self.y == c)
+        numerator = count_class_k + self.alpha
+        denominator = self.total_samples + (self.alpha * self.num_classes)
+
+        return numerator / denominator
+
+    def _classify(self, sample):
+        posteriors = []
+        for i, c in enumerate(self.classes):
+            posterior = self._calculate_prior(c)
+
+            for feature_idx, (feature_value, params) in enumerate(zip(sample, self.parameters[i])):
+                likelihood = self._calculate_likelihood(params, feature_value)
+                posterior *= likelihood
+
+            posteriors.append(posterior)
+
+        return self.classes[np.argmax(posteriors)]
+
+    def predict(self, X):
+        y_pred = [self._classify(sample) for sample in X]
+        return np.array(y_pred)
+
 
 # %% [markdown] id="Qg-9EzmDs1ne"
 # # Part C
