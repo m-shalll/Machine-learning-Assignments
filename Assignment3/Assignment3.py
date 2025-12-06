@@ -12,6 +12,8 @@
 #     name: python3
 # ---
 
+# %%
+
 # %% [markdown] id="8FpQk1OWs2CG"
 # # Imports
 
