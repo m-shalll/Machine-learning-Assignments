@@ -8,7 +8,8 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.18.1
 #   kernelspec:
-#     display_name: Python 3
+#     display_name: Python 3 (ipykernel)
+#     language: python
 #     name: python3
 # ---
 
@@ -19,6 +20,10 @@
 from sklearn.datasets import load_breast_cancer
 from sklearn.datasets import load_digits
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import (
+    accuracy_score, precision_score, recall_score,
+    f1_score, confusion_matrix, confusion_matrix, ConfusionMatrixDisplay, classification_report
+)
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from numpy.linalg import slogdet, inv
@@ -28,6 +33,7 @@ import pandas as pd
 import os
 from dataclasses import dataclass, field
 from typing import Optional, Any, Dict
+import matplotlib.pyplot as plt
 
 # %% [markdown] id="0v2yiieTs16d"
 # # Part A
@@ -122,6 +128,169 @@ def predict(X, pi, mu, Sigma_reg):
     scores = compute_scores(X, pi, mu, Sigma_reg)
     return np.argmax(scores, axis=1)
 
+
+# %% [markdown]
+# ## A3. Hyperparameter Tuning and Evaluation
+
+# %%
+lambdas = [1e-8, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.0]
+best_lambda = None
+best_val_acc = -1
+
+for lam in lambdas:
+    pi, mu, Sigma = estimate_parameters(X_train, y_train,lam)
+    y_val_pred = predict(X_val, pi, mu, Sigma)
+    acc = accuracy_score(y_val, y_val_pred)
+    print(f"lambda={lam:.0e} | val accuracy={acc:.4f}")
+
+    if acc > best_val_acc:
+        best_val_acc = acc
+        best_lambda = lam
+
+print("\nBest lambda:", best_lambda)
+print("Best validation accuracy:", best_val_acc)
+
+# %% [markdown]
+# # A3. Train on (train + validation) using best λ
+
+# %%
+X_final_train = np.vstack((X_train, X_val))
+y_final_train = np.concatenate((y_train, y_val))
+
+pi_f, mu_f, Sigma_f = estimate_parameters(X_final_train, y_final_train, best_lambda)
+y_test_pred = predict(X_test, pi_f, mu_f, Sigma_f)
+
+test_acc = accuracy_score(y_test, y_test_pred)
+print("Test Accuracy: \n", test_acc)
+print("Classification Report:")
+print(classification_report(y_test, y_test_pred))
+
+# Confusion matrix
+cm = confusion_matrix(y_test, y_test_pred)
+disp = ConfusionMatrixDisplay(confusion_matrix=cm)
+disp.plot(cmap="Blues")
+plt.title("Gaussian Generative Classifier — Confusion Matrix")
+plt.show()
+
+# %% [markdown]
+# # A4. Report
+
+# %% [markdown]
+# ## 1. Explanation of the Generative Model
+#
+# ### Assumptions for the Generative Model
+#
+# In a Gaussian generative classifier, we assume that classification works by modeling how the data is generated for each class.  
+# We make two key assumptions:
+#
+# - **Prior over labels**  
+#   \( p(y = k) = \pi_k \)  
+#   This represents how likely each digit class is before seeing any feature values.
+#
+# - **Class-conditional distribution**  
+#   \( p(x \mid y = k) \sim \mathcal{N}(\mu_k, \Sigma) \)  
+#   We assume that the feature vectors of all classes follow a multivariate Gaussian distribution with:
+#   - a **class-specific mean vector** \( \mu_k \)
+#   - a **shared covariance matrix** \( \Sigma \) across all classes  
+#     (this is the LDA assumption)
+#
+# ### Estimating the Parameters
+#
+# From the training set:
+#
+# - **Class prior**  
+#   \[
+#   \pi_k = \frac{\text{number of samples in class } k}{\text{total number of samples}}
+#   \]
+#
+# - **Class mean vector**  
+#   \[
+#   \mu_k = \frac{1}{N_k} \sum_{i: y_i = k} x_i
+#   \]
+#
+# - **Shared covariance matrix**  
+#   \[
+#   \Sigma = \frac{1}{N} \sum_{k} \sum_{i: y_i = k} (x_i - \mu_k)(x_i - \mu_k)^T
+#   \]
+#
+# ### Why We Regularize the Covariance
+#
+# High-dimensional data often makes the covariance matrix nearly singular.  
+# To fix this, we apply:
+#
+# \[
+# \Sigma_\lambda = \Sigma + \lambda I
+# \]
+#
+# This **regularization**:
+#
+# - prevents the covariance matrix from becoming non-invertible  
+# - stabilizes the model  
+# - reduces overfitting by shrinking the covariance  
+# - controls how smooth the decision boundaries are
+#
+# Smaller λ → more flexible model, may overfit  
+# Larger λ → smoother model, may underfit
+#
+# ---
+#
+# ## 2. Table of Validation Accuracy for Different λ Values
+#
+# | λ value | Validation Accuracy |
+# |--------|---------------------|
+# | 1e-4   | … |
+# | 1e-3   | … |
+# | 1e-2   | … |
+# | 1e-1   | … |
+#
+# (You will fill these in after running your code.)
+#
+# ---
+#
+# ## 3. Final Test Results
+#
+# Using the selected λ (the one with the highest validation accuracy), we retrain on the combined training + validation sets and evaluate on the test set.
+#
+# ### Performance Metrics
+#
+# - **Test accuracy:** …  
+# - **Macro-averaged precision:** …  
+# - **Macro-averaged recall:** …  
+# - **Macro-averaged F1-score:** …
+#
+# ### Confusion Matrix
+#
+# (Insert your plotted confusion matrix as an image, or paste the numerical table.)
+#
+# ---
+#
+# ## 4. Discussion
+#
+# ### Digit Confusions
+#
+# Some digits are visually similar and therefore often misclassified.  
+# Typical confusions might include:
+#
+# - **3 vs 5** — similar curved structure  
+# - **4 vs 9** — similar upper sections  
+# - **7 vs 9** — overlapping shapes in pixel space  
+#
+# Your own results will show which pairs were most confused in the confusion matrix.
+#
+# ### Effect of λ on Performance
+#
+# The choice of λ significantly affects classification:
+#
+# - Very small λ sometimes leads to instability or overfitting.
+# - Larger λ smooths the covariance, improving generalization.
+# - In our experiments, the best λ was …, which gave the highest validation accuracy.
+#
+# ### Overall Observations
+#
+# - The Gaussian generative classifier (LDA) performs well when each class forms a roughly Gaussian cluster.  
+# - However, MNIST digits are not perfectly Gaussian and classes overlap in ways that the model cannot fully capture.
+# - The model is efficient, interpretable, and relatively robust, but more advanced discriminative models (e.g., logistic regression, neural nets) usually outperform it on handwritten digits.
+#
 
 # %% [markdown] id="vyKmdrLqs1wu"
 # # Part B
