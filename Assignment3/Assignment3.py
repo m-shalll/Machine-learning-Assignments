@@ -456,18 +456,18 @@ min_samples_accuracies = []
 best_min_samples = -1
 best_min_samples_acc = -1
 
-for min_samples in min_samples:
-    dec_tree = DecisionTreeClassifier(min_samples_split=min_samples)
+for min_sample in min_samples:
+    dec_tree = DecisionTreeClassifier(min_samples_split=min_sample)
     dec_tree.fit(X_train, y_train)
     predictions = dec_tree.predict(X_val)
     acc = accuracy_score(y_val, predictions)
     min_samples_accuracies.append(acc)
     
-    print(f"Min Samples Split: {min_samples}, Validation Accuracy: {acc:.4f}")
+    print(f"Min Samples Split: {min_sample}, Validation Accuracy: {acc:.4f}")
 
     if acc > best_min_samples_acc:
         best_min_samples_acc = acc
-        best_min_samples = min_samples
+        best_min_samples = min_sample
 
 print(f"Best Min Samples Split: {best_min_samples}, Validation Accuracy: {best_min_samples_acc:.4f}")
 
@@ -488,18 +488,18 @@ best_combined_min_samples = -1
 best_combined_acc = -1
 
 for depth in depths:
-    for min_samples in min_samples:
-        dec_tree = DecisionTreeClassifier(max_depth=depth, min_samples_split=min_samples)
+    for min_sample in min_samples:
+        dec_tree = DecisionTreeClassifier(max_depth=depth, min_samples_split=min_sample)
         dec_tree.fit(X_train, y_train)
         predictions = dec_tree.predict(X_val)
         acc = accuracy_score(y_val, predictions)
         
-        print(f"Depth: {depth}, Min Samples Split: {min_samples}, Validation Accuracy: {acc:.4f}")
+        print(f"Depth: {depth}, Min Samples Split: {min_sample}, Validation Accuracy: {acc:.4f}")
 
         if acc > best_combined_acc:
             best_combined_acc = acc
             best_combined_depth = depth
-            best_combined_min_samples = min_samples
+            best_combined_min_samples = min_sample
 
 print(f"Best Combined Hyperparameters:\nDepth: {best_combined_depth}, Min Samples Split: {best_combined_min_samples}, Validation Accuracy: {best_combined_acc:.4f}")   
 
