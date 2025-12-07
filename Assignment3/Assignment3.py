@@ -22,11 +22,10 @@ from sklearn.datasets import load_digits
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score,
-    f1_score, confusion_matrix, confusion_matrix, ConfusionMatrixDisplay, classification_report
+    f1_score, confusion_matrix, ConfusionMatrixDisplay, classification_report
 )
 from sklearn.preprocessing import StandardScaler
 from sklearn.calibration import LabelEncoder
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from numpy.linalg import slogdet, inv
 import matplotlib.pyplot as plt
 import numpy as np
@@ -847,7 +846,12 @@ print("Classification Report:")
 print(classification_report(y_test, final_predictions))
 
 print("Confusion Matrix:")
-print(confusion_matrix(y_test, final_predictions))
+# print(confusion_matrix(y_test, final_predictions))
+cm = confusion_matrix(y_test, final_predictions)
+disp = ConfusionMatrixDisplay(confusion_matrix=cm)
+disp.plot(cmap='Blues')
+plt.title("Decision Tree Confusion Matrix")
+plt.show()
 
 # %% [markdown] id="unhx9Ykds1e_"
 # # Part D
