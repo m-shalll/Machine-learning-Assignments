@@ -8,11 +8,10 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.18.1
 #   kernelspec:
-#     display_name: Python 3
+#     display_name: base
+#     language: python
 #     name: python3
 # ---
-
-# %%
 
 # %% [markdown] id="8FpQk1OWs2CG"
 # # Imports
@@ -22,12 +21,18 @@ from sklearn.datasets import load_breast_cancer
 from sklearn.datasets import load_digits
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+from sklearn.calibration import LabelEncoder
 from numpy.linalg import slogdet, inv
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import os
 from dataclasses import dataclass, field
 from typing import Optional, Any, Dict
+import kagglehub 
+from kagglehub import KaggleDatasetAdapter
+from sklearn.metrics import accuracy_score
+from sklearn.naive_bayes import MultinomialNB
 
 # %% [markdown] id="0v2yiieTs16d"
 # # Part A
@@ -186,7 +191,7 @@ class NaiveBayes():
                     count = counts_dict.get(val, 0)
                     probs[val] = (count + self.alpha) / denominator
 
-                unseen_prob = (0 + self.alpha) / denominator
+                unseen_prob = (self.alpha) / denominator
 
                 parameters = {"probs": probs, "unseen_prob": unseen_prob}
                 self.parameters[i].append(parameters)
@@ -204,23 +209,175 @@ class NaiveBayes():
 
         return numerator / denominator
 
-    def _classify(self, sample):
-        posteriors = []
+    def _calculate_posteriors(self, sample):
+        log_posteriors = []
         for i, c in enumerate(self.classes):
-            posterior = self._calculate_prior(c)
+            posterior = np.log(self._calculate_prior(c))
 
             for feature_idx, (feature_value, params) in enumerate(zip(sample, self.parameters[i])):
                 likelihood = self._calculate_likelihood(params, feature_value)
-                posterior *= likelihood
+                posterior += np.log(likelihood)
 
-            posteriors.append(posterior)
+            log_posteriors.append(posterior)
 
-        return self.classes[np.argmax(posteriors)]
+        return log_posteriors
+
+    def _predict_label(self, sample):
+        log_posteriors = self._calculate_posteriors(sample)
+        return self.classes[np.argmax(log_posteriors)]
 
     def predict(self, X):
-        y_pred = [self._classify(sample) for sample in X]
+        y_pred = [self._predict_label(sample) for sample in X]
         return np.array(y_pred)
 
+
+# %%
+def evaluate_model(model, X, y):
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X)
+    accuracy = accuracy_score(y, y_pred)
+    
+    return accuracy
+
+
+# %%
+print("\nSmoothing Parameter Analysis:")
+alpha_values = [0.1, 0.5, 1.0, 2.0, 5.0]
+best_alpha = 1.0
+best_accuracy = 0.0
+
+alpha_results = []
+for alpha in alpha_values:
+    nb_model = NaiveBayes(alpha=alpha)
+    acc = evaluate_model(nb_model, X_val, y_val)
+    alpha_results.append((alpha, acc))
+    print(f"Alpha = {alpha}: Validation Accuracy = {acc:.4f}")
+    
+    if acc > best_accuracy:
+        best_accuracy = acc
+        best_alpha = alpha
+
+print(f"\nOptimal alpha found on validation set: {best_alpha} with Accuracy: {best_accuracy:.4f}")
+
+optimal_nb = NaiveBayes(alpha=best_alpha)
+optimal_nb.fit(X_train, y_train)
+
+# %%
+print("Feature Selection Analysis:")
+feature_names = np.array(categorical_features)
+feature_indices = {name: i for i, name in enumerate(feature_names)}
+
+# 1-Base Model (All Features)
+base_accuracy = evaluate_model(optimal_nb, X_val, y_val)
+print(f"All Features: Accuracy = {base_accuracy:.4f}")
+
+# 2-Removing 'race'
+race_idx = feature_indices['race']
+X_train_no_race = np.delete(X_train, race_idx, axis=1)
+X_val_no_race = np.delete(X_val, race_idx, axis=1)
+
+nb_no_race = NaiveBayes(alpha=best_alpha)
+nb_no_race.fit(X_train_no_race, y_train)
+acc_no_race = evaluate_model(nb_no_race, X_val_no_race, y_val)
+print(f"Excluding 'race': Accuracy = {acc_no_race:.4f} (Change: {acc_no_race - base_accuracy:.4f})")
+
+# 3-Removing 'sex'
+sex_idx = feature_indices['sex']
+X_train_no_sex = np.delete(X_train, sex_idx, axis=1)
+X_val_no_sex = np.delete(X_val, sex_idx, axis=1)
+
+nb_no_sex = NaiveBayes(alpha=best_alpha)
+nb_no_sex.fit(X_train_no_sex, y_train)
+acc_no_sex = evaluate_model(nb_no_sex, X_val_no_sex, y_val)
+print(f"Excluding 'sex': Accuracy = {acc_no_sex:.4f} (Change: {acc_no_sex - base_accuracy:.4f})")
+
+# 3-Removing 'sex', 'race' and 'relationship'
+features_to_remove = ['sex', 'race', 'relationship']
+remove_idx = [feature_indices[feat] for feat in features_to_remove]
+X_train_no_subset = np.delete(X_train, remove_idx, axis=1)
+X_val_no_subset = np.delete(X_val, remove_idx, axis=1)
+
+nb_no_subset = NaiveBayes(alpha=best_alpha)
+nb_no_subset.fit(X_train_no_subset, y_train)
+acc_no_subset = evaluate_model(nb_no_subset, X_val_no_subset, y_val)
+print(f"Excluding 'sex', 'race' and 'relationship': Accuracy = {acc_no_subset:.4f} (Change: {acc_no_subset - base_accuracy:.4f})")
+
+# 4-Only 'workclass' and 'occupation' features
+workclass_idx = feature_indices['workclass']
+occupation_idx = feature_indices['occupation']
+subset_indices = [workclass_idx, occupation_idx]
+
+X_train_subset = X_train[:, subset_indices]
+X_val_subset = X_val[:, subset_indices]
+
+nb_subset = NaiveBayes(alpha=best_alpha)
+nb_subset.fit(X_train_subset, y_train)
+acc_subset = evaluate_model(nb_subset, X_val_subset, y_val)
+print(f"'workclass' and 'occupation' Only: Accuracy = {acc_subset:.4f} (Change: {acc_subset - base_accuracy:.4f})")
+
+optmal_nb = nb_no_subset
+
+# %%
+# Probability Analysis:
+print("\nProbability Analysis: ")
+
+log_posteriors_val = np.array([optimal_nb._calculate_posteriors(sample) for sample in X_val])
+
+scores_class_1 = log_posteriors_val[:, 1]
+
+scores_true_0 = scores_class_1[y_val == 0] # Scores for actual <=50K
+scores_true_1 = scores_class_1[y_val == 1] # Scores for actual >50K
+
+plt.figure(figsize=(10, 6))
+
+# Histogram for Class 0 (<=50k)
+plt.hist(scores_true_0, bins=50, alpha=0.5, label='True Class <=50K', color='blue', density=True)
+
+# Histogram for Class 1 (>50k)
+plt.hist(scores_true_1, bins=50, alpha=0.5, label='True Class >50K', color='orange', density=True)
+
+plt.title('Distribution of Log Posterior Scores for Class >50K')
+plt.xlabel('Log Posterior Score (Higher = More likely >50K)')
+plt.ylabel('Density (Frequency)')
+plt.legend()
+plt.grid(True, alpha=0.5)
+plt.show()
+
+print("Analysis:")
+print("This plot shows how confident the model is for each class.")
+print("The blue bars shows scores for people who earn <=50K.")
+print("The orange distribution shows scores for people who earn >50K.")
+print("These two distributions should be far apart with little overlap.")
+print("The overlap area represents where the model is confused and making errors.")
+
+# %%
+# Independence Assumption
+print("\nIndependence Assumption:")
+print("The Naive Bayes classifier assumes that all features are conditionally independent given the class.")
+print("In this dataset, this assumption is likely violated in several places:")
+print("- Marital Status and Relationship: These are highly correlated.")
+print("- Education and Occupation: These are often correlated as higher education restricts certain occupations.")
+print("- Sex and Relationship: These are highly correlated as 'Husband' implies 'Male' and 'Wife' implies 'Female'.")
+print("When features are dependent, the model 'double counts', leading to overconfident probabilities , though the ranking often but not always remains correct.")
+
+# %%
+# Performance Comparison with MultinomialNB
+print("\nPerformance Comparison on Test Set:")
+
+y_pred_custom = optimal_nb.predict(X_test)
+custom_acc_test = accuracy_score(y_test, y_pred_custom)
+print(f"Custom NaiveBayes: Test Accuracy = {custom_acc_test:.4f}")
+
+# MultinomialNB
+sklearn_nb = MultinomialNB(alpha=best_alpha)
+sklearn_nb.fit(X_train, y_train)
+y_pred_sklearn = sklearn_nb.predict(X_test)
+sklearn_acc_test = accuracy_score(y_test, y_pred_sklearn)
+print(f"Scikit MultinomialNB: Test Accuracy = {sklearn_acc_test:.4f}")
+
+# Conclusion
+diff = custom_acc_test - sklearn_acc_test
+print(f"Difference (Custom - Sklearn): {diff:.4f}")
 
 # %% [markdown] id="Qg-9EzmDs1ne"
 # # Part C
