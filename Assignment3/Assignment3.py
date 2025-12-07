@@ -20,8 +20,13 @@
 from sklearn.datasets import load_breast_cancer
 from sklearn.datasets import load_digits
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import (
+    accuracy_score, precision_score, recall_score,
+    f1_score, confusion_matrix, confusion_matrix, ConfusionMatrixDisplay, classification_report
+)
 from sklearn.preprocessing import StandardScaler
 from sklearn.calibration import LabelEncoder
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from numpy.linalg import slogdet, inv
 import matplotlib.pyplot as plt
 import numpy as np
@@ -33,6 +38,7 @@ import kagglehub
 from kagglehub import KaggleDatasetAdapter
 from sklearn.metrics import accuracy_score
 from sklearn.naive_bayes import MultinomialNB
+import matplotlib.pyplot as plt
 
 # %% [markdown] id="0v2yiieTs16d"
 # # Part A
@@ -127,6 +133,169 @@ def predict(X, pi, mu, Sigma_reg):
     scores = compute_scores(X, pi, mu, Sigma_reg)
     return np.argmax(scores, axis=1)
 
+
+# %% [markdown]
+# ## A3. Hyperparameter Tuning and Evaluation
+
+# %%
+lambdas = [1e-8, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.0]
+best_lambda = None
+best_val_acc = -1
+
+for lam in lambdas:
+    pi, mu, Sigma = estimate_parameters(X_train, y_train,lam)
+    y_val_pred = predict(X_val, pi, mu, Sigma)
+    acc = accuracy_score(y_val, y_val_pred)
+    print(f"lambda={lam:.0e} | val accuracy={acc:.4f}")
+
+    if acc > best_val_acc:
+        best_val_acc = acc
+        best_lambda = lam
+
+print("\nBest lambda:", best_lambda)
+print("Best validation accuracy:", best_val_acc)
+
+# %% [markdown]
+# # A3. Train on (train + validation) using best λ
+
+# %%
+X_final_train = np.vstack((X_train, X_val))
+y_final_train = np.concatenate((y_train, y_val))
+
+pi_f, mu_f, Sigma_f = estimate_parameters(X_final_train, y_final_train, best_lambda)
+y_test_pred = predict(X_test, pi_f, mu_f, Sigma_f)
+
+test_acc = accuracy_score(y_test, y_test_pred)
+print("Test Accuracy: \n", test_acc)
+print("Classification Report:")
+print(classification_report(y_test, y_test_pred))
+
+# Confusion matrix
+cm = confusion_matrix(y_test, y_test_pred)
+disp = ConfusionMatrixDisplay(confusion_matrix=cm)
+disp.plot(cmap="Blues")
+plt.title("Gaussian Generative Classifier — Confusion Matrix")
+plt.show()
+
+# %% [markdown]
+# # A4. Report
+
+# %% [markdown]
+# ## 1. Explanation of the Generative Model
+#
+# ### Assumptions for the Generative Model
+#
+# In a Gaussian generative classifier, we assume that classification works by modeling how the data is generated for each class.  
+# We make two key assumptions:
+#
+# - **Prior over labels**  
+#   \( p(y = k) = \pi_k \)  
+#   This represents how likely each digit class is before seeing any feature values.
+#
+# - **Class-conditional distribution**  
+#   \( p(x \mid y = k) \sim \mathcal{N}(\mu_k, \Sigma) \)  
+#   We assume that the feature vectors of all classes follow a multivariate Gaussian distribution with:
+#   - a **class-specific mean vector** \( \mu_k \)
+#   - a **shared covariance matrix** \( \Sigma \) across all classes  
+#     (this is the LDA assumption)
+#
+# ### Estimating the Parameters
+#
+# From the training set:
+#
+# - **Class prior**  
+#   \[
+#   \pi_k = \frac{\text{number of samples in class } k}{\text{total number of samples}}
+#   \]
+#
+# - **Class mean vector**  
+#   \[
+#   \mu_k = \frac{1}{N_k} \sum_{i: y_i = k} x_i
+#   \]
+#
+# - **Shared covariance matrix**  
+#   \[
+#   \Sigma = \frac{1}{N} \sum_{k} \sum_{i: y_i = k} (x_i - \mu_k)(x_i - \mu_k)^T
+#   \]
+#
+# ### Why We Regularize the Covariance
+#
+# High-dimensional data often makes the covariance matrix nearly singular.  
+# To fix this, we apply:
+#
+# \[
+# \Sigma_\lambda = \Sigma + \lambda I
+# \]
+#
+# This **regularization**:
+#
+# - prevents the covariance matrix from becoming non-invertible  
+# - stabilizes the model  
+# - reduces overfitting by shrinking the covariance  
+# - controls how smooth the decision boundaries are
+#
+# Smaller λ → more flexible model, may overfit  
+# Larger λ → smoother model, may underfit
+#
+# ---
+#
+# ## 2. Table of Validation Accuracy for Different λ Values
+#
+# | λ value | Validation Accuracy |
+# |--------|---------------------|
+# | 1e-4   | … |
+# | 1e-3   | … |
+# | 1e-2   | … |
+# | 1e-1   | … |
+#
+# (You will fill these in after running your code.)
+#
+# ---
+#
+# ## 3. Final Test Results
+#
+# Using the selected λ (the one with the highest validation accuracy), we retrain on the combined training + validation sets and evaluate on the test set.
+#
+# ### Performance Metrics
+#
+# - **Test accuracy:** …  
+# - **Macro-averaged precision:** …  
+# - **Macro-averaged recall:** …  
+# - **Macro-averaged F1-score:** …
+#
+# ### Confusion Matrix
+#
+# (Insert your plotted confusion matrix as an image, or paste the numerical table.)
+#
+# ---
+#
+# ## 4. Discussion
+#
+# ### Digit Confusions
+#
+# Some digits are visually similar and therefore often misclassified.  
+# Typical confusions might include:
+#
+# - **3 vs 5** — similar curved structure  
+# - **4 vs 9** — similar upper sections  
+# - **7 vs 9** — overlapping shapes in pixel space  
+#
+# Your own results will show which pairs were most confused in the confusion matrix.
+#
+# ### Effect of λ on Performance
+#
+# The choice of λ significantly affects classification:
+#
+# - Very small λ sometimes leads to instability or overfitting.
+# - Larger λ smooths the covariance, improving generalization.
+# - In our experiments, the best λ was …, which gave the highest validation accuracy.
+#
+# ### Overall Observations
+#
+# - The Gaussian generative classifier (LDA) performs well when each class forms a roughly Gaussian cluster.  
+# - However, MNIST digits are not perfectly Gaussian and classes overlap in ways that the model cannot fully capture.
+# - The model is efficient, interpretable, and relatively robust, but more advanced discriminative models (e.g., logistic regression, neural nets) usually outperform it on handwritten digits.
+#
 
 # %% [markdown] id="vyKmdrLqs1wu"
 # # Part B
@@ -386,7 +555,7 @@ print(f"Difference (Custom - Sklearn): {diff:.4f}")
 # ## Decision Trees
 
 # %% [markdown] id="Pt-R_3h2tacV"
-# ## Loading & Splitting Dataset
+# ### Loading & Splitting Dataset
 
 # %% colab={"base_uri": "https://localhost:8080/"} id="Ul72e1Fhtjk8" outputId="13bbdfb8-6129-4961-b1d2-301031ff4560"
 data = load_breast_cancer()
@@ -409,7 +578,7 @@ print("Test size:", X_test.shape)
 
 
 # %% [markdown] id="0bdIrpt8tq7l"
-# ## Entropy calculation
+# ### Entropy calculation
 
 # %% id="ydGCEdsltwUe"
 def entropy(y):
@@ -419,7 +588,7 @@ def entropy(y):
 
 
 # %% [markdown] id="Ud9EWWH0t7ZF"
-# ## Information Gain Calculation
+# ### Information Gain Calculation
 
 # %% id="P0SONj7Ct9Cd"
 def information_gain(y_parent, y_left, y_right):
@@ -430,10 +599,10 @@ def information_gain(y_parent, y_left, y_right):
 
 
 # %% [markdown] id="EdFjDdgRt_9f"
-# ## Finding The Best Threshold to Split
+# ### Finding The Best Threshold to Split
 
 # %% [markdown] id="SAn3-cGquCV2"
-# ### Finding the best threshold for a given feature
+# #### Finding the best threshold for a given feature
 
 # %% id="5tOs7vJEuFRd"
 def best_split_for_feature(X_column, y):
@@ -463,7 +632,7 @@ def best_split_for_feature(X_column, y):
 
 
 # %% [markdown] id="ZxQOReF9uI3l"
-# ### Finding the best feature to split on
+# #### Finding the best feature to split on
 
 # %% id="TN_5IbcnuLVM"
 def best_split_overall(X, y):
@@ -481,10 +650,10 @@ def best_split_overall(X, y):
 
 
 # %% [markdown] id="NQ5wBR5xuNRm"
-# ## Decision Tree Implementation
+# ### Decision Tree Implementation
 
 # %% [markdown] id="ovqt6lpbuRnv"
-# ### Node Class Implementation
+# #### Node Class Implementation
 
 # %% id="qRaURTbXuPRO"
 @dataclass
@@ -500,11 +669,11 @@ class Node:
 
 
 # %% [markdown] id="2HH1cuYVuV6t"
-# ### DecisionTree Class Implementation
+# #### DecisionTree Class Implementation
 
 # %% id="W-41Zt-yun5V"
 class DecisionTreeClassifier:
-    def __init__(self, max_depth=5, min_samples_split=2):
+    def __init__(self, max_depth=8, min_samples_split=5):
         self.max_depth = max_depth
         self.min_samples_split = min_samples_split
         self.root = None
@@ -566,6 +735,119 @@ class DecisionTreeClassifier:
 
     def predict(self, X):
         return np.array([self._predict_one(x, self.root) for x in X])
+
+
+# %% [markdown]
+# ### Hyperparameter Tuning
+
+# %% [markdown]
+# #### Maximum Grid Depth Tuning
+
+# %%
+depths = [2, 4, 6, 8, 10]
+depth_accuracies = []
+best_depth = -1
+best_depth_acc = -1
+
+for depth in depths:
+    dec_tree = DecisionTreeClassifier(max_depth=depth)
+    dec_tree.fit(X_train, y_train)
+    predictions = dec_tree.predict(X_val)
+    acc = accuracy_score(y_val, predictions)
+    depth_accuracies.append(acc)
+    
+    print(f"Depth: {depth}, Validation Accuracy: {acc:.4f}")
+
+    if acc > best_depth_acc:
+        best_depth_acc = acc
+        best_depth = depth
+
+print(f"Best Depth: {best_depth}, Validation Accuracy: {best_depth_acc:.4f}")
+
+
+# %%
+plt.plot(depths, depth_accuracies)
+plt.xlabel("Max Depth")
+plt.ylabel("Validation Accuracy")
+plt.title("Decision Tree Depth vs Accuracy")
+plt.grid(True)
+plt.show()
+
+# %% [markdown]
+# #### Minimum Samples For Splitting Tuning
+
+# %%
+min_samples = [2, 5, 10]
+min_samples_accuracies = []
+best_min_samples = -1
+best_min_samples_acc = -1
+
+for min_sample in min_samples:
+    dec_tree = DecisionTreeClassifier(min_samples_split=min_sample)
+    dec_tree.fit(X_train, y_train)
+    predictions = dec_tree.predict(X_val)
+    acc = accuracy_score(y_val, predictions)
+    min_samples_accuracies.append(acc)
+    
+    print(f"Min Samples Split: {min_sample}, Validation Accuracy: {acc:.4f}")
+
+    if acc > best_min_samples_acc:
+        best_min_samples_acc = acc
+        best_min_samples = min_sample
+
+print(f"Best Min Samples Split: {best_min_samples}, Validation Accuracy: {best_min_samples_acc:.4f}")
+
+# %%
+plt.plot(min_samples, min_samples_accuracies)
+plt.xlabel("Minimum Samples Split")
+plt.ylabel("Validation Accuracy")
+plt.title("Decision Tree Minimum Samples Split vs Accuracy")
+plt.grid(True)
+plt.show()
+
+# %% [markdown]
+# #### Combined Hyperparameter Tuning
+
+# %%
+best_combined_depth = -1
+best_combined_min_samples = -1
+best_combined_acc = -1
+
+for depth in depths:
+    for min_sample in min_samples:
+        dec_tree = DecisionTreeClassifier(max_depth=depth, min_samples_split=min_sample)
+        dec_tree.fit(X_train, y_train)
+        predictions = dec_tree.predict(X_val)
+        acc = accuracy_score(y_val, predictions)
+        
+        print(f"Depth: {depth}, Min Samples Split: {min_sample}, Validation Accuracy: {acc:.4f}")
+
+        if acc > best_combined_acc:
+            best_combined_acc = acc
+            best_combined_depth = depth
+            best_combined_min_samples = min_sample
+
+print(f"Best Combined Hyperparameters:\nDepth: {best_combined_depth}, Min Samples Split: {best_combined_min_samples}, Validation Accuracy: {best_combined_acc:.4f}")   
+
+# %% [markdown]
+# ### Evaluation On Test Dataset
+
+# %%
+X_final_train = np.vstack((X_train, X_val))
+y_final_train = np.hstack((y_train, y_val))
+
+final_dec_tree = DecisionTreeClassifier(max_depth=best_combined_depth, min_samples_split=best_combined_min_samples)
+final_dec_tree.fit(X_final_train, y_final_train)
+final_predictions = final_dec_tree.predict(X_test)
+
+print("Test Set Evaluation:")
+print(f"Accuracy: {accuracy_score(y_test, final_predictions):.4f}")
+
+print("Classification Report:")
+print(classification_report(y_test, final_predictions))
+
+print("Confusion Matrix:")
+print(confusion_matrix(y_test, final_predictions))
 
 # %% [markdown] id="unhx9Ykds1e_"
 # # Part D
