@@ -442,6 +442,8 @@ def cramers_v(x, y):
     n = confusion_matrix.sum().sum()
     phi2 = chi2 / n
 
+    return np.sqrt(phi2 / min((confusion_matrix.shape[0]-1), (confusion_matrix.shape[1]-1)))
+
 df_corr = df[categorical_features].copy()
 
 rows = []
@@ -457,7 +459,7 @@ df_cramers = pd.DataFrame(cramers_results, columns=categorical_features, index=c
 
 plt.figure(figsize=(10, 8))
 sns.heatmap(df_cramers, annot=True, cmap='coolwarm', fmt='.2f', linewidths=.5)
-plt.title("Cramér's V Correlation Heatmap (Categorical Features)")
+plt.title("Correlation Heatmap (Categorical Features)")
 plt.show()
 
 
