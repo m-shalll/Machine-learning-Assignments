@@ -155,7 +155,7 @@ print("\nBest lambda:", best_lambda)
 print("Best validation accuracy:", best_val_acc)
 
 # %% [markdown]
-# # A3. Train on (train + validation) using best λ
+# ## A3. Train on (train + validation) using best λ
 
 # %%
 X_final_train = np.vstack((X_train, X_val))
@@ -177,7 +177,7 @@ plt.title("Gaussian Generative Classifier — Confusion Matrix")
 plt.show()
 
 # %% [markdown]
-# # A4. Report
+# ## A4. Report
 
 # %% [markdown]
 # ## 1. Explanation of the Generative Model
@@ -557,12 +557,14 @@ print(f"Difference (Custom - Sklearn): {diff:.4f}")
 # ### Loading & Splitting Dataset
 
 # %% colab={"base_uri": "https://localhost:8080/"} id="Ul72e1Fhtjk8" outputId="13bbdfb8-6129-4961-b1d2-301031ff4560"
+# Load the dataset
 data = load_breast_cancer()
-X = data.data
-y = data.target
+X = data.data   # features
+y = data.target # labels
 feature_names = data.feature_names
 target_names = data.target_names
 
+# Stratified splitting makes sure that each set has proportional representation of each class 
 X_train, X_temp, y_train, y_temp = train_test_split(
     X, y, test_size=0.30, stratify=y, random_state=42
 )
@@ -580,6 +582,7 @@ print("Test size:", X_test.shape)
 # ### Entropy calculation
 
 # %% id="ydGCEdsltwUe"
+# Entropy equals the summation of the probability of a class times the log2 of that probability
 def entropy(y):
     vals, counts = np.unique(y, return_counts=True)
     probs = counts / counts.sum()
@@ -590,6 +593,8 @@ def entropy(y):
 # ### Information Gain Calculation
 
 # %% id="P0SONj7Ct9Cd"
+# IG = Entropy(parent) - Entropy(parent|feature)
+# Entropy(parent|feature) = weighted average of the entropies of the child nodes
 def information_gain(y_parent, y_left, y_right):
     n = len(y_parent)
     if len(y_left) == 0 or len(y_right) == 0:
@@ -605,14 +610,15 @@ def information_gain(y_parent, y_left, y_right):
 
 # %% id="5tOs7vJEuFRd"
 def best_split_for_feature(X_column, y):
-    sorted_idx = np.argsort(X_column)
+    sorted_idx = np.argsort(X_column) # Indices that would sort the feature column
     X_sorted = X_column[sorted_idx]
     y_sorted = y[sorted_idx]
 
-    distinct = np.where(np.diff(X_sorted) != 0)[0]
-    if len(distinct) == 0:
+    distinct = np.where(np.diff(X_sorted) != 0)[0] # Indices where feature value changes
+    if len(distinct) == 0: # all feature values are the same, so no valid split
         return None, 0
 
+    # finds all midpoints between distinct feature values
     thresholds = (X_sorted[distinct] + X_sorted[distinct + 1]) / 2
 
     best_gain = -1
@@ -634,13 +640,14 @@ def best_split_for_feature(X_column, y):
 # #### Finding the best feature to split on
 
 # %% id="TN_5IbcnuLVM"
+# Find the best split across all features at the current node
 def best_split_overall(X, y):
     n_features = X.shape[1]
     best = {"feature": None, "threshold": None, "gain": -1}
 
     for j in range(n_features):
         thr, gain = best_split_for_feature(X[:, j], y)
-        if gain > best["gain"]:
+        if thr is not None and gain > best["gain"]:
             best["gain"] = gain
             best["feature"] = j
             best["threshold"] = thr
@@ -657,26 +664,26 @@ def best_split_overall(X, y):
 # %% id="qRaURTbXuPRO"
 @dataclass
 class Node:
-    feature: Optional[int] = None
-    threshold: Optional[float] = None
-    left: Any = None
-    right: Any = None
+    feature: Optional[int] = None   # Index of the feature to split on
+    threshold: Optional[float] = None   # Threshold value for the split
+    left: Any = None    # Left child node
+    right: Any = None   # Right child node
     is_leaf: bool = False
-    prediction: Optional[int] = None
-    n_samples: int = 0
-    class_counts: Dict[int, int] = field(default_factory=dict)
+    prediction: Optional[int] = None # Predicted class for leaf nodes
+    n_samples: int = 0  # Number of samples at the node
+    class_counts: Dict[int, int] = field(default_factory=dict) # Counts of each class at the node
 
 
 # %% [markdown] id="2HH1cuYVuV6t"
 # #### DecisionTree Class Implementation
 
 # %% id="W-41Zt-yun5V"
-class DecisionTreeClassifier:
+class DecisionTreeClass:
     def __init__(self, max_depth=8, min_samples_split=5):
-        self.max_depth = max_depth
-        self.min_samples_split = min_samples_split
+        self.max_depth = max_depth  # Maximum depth of the tree
+        self.min_samples_split = min_samples_split  # Minimum samples required to split a node
         self.root = None
-        self.feature_importances_ = None
+        self.feature_importances_ = None # List to store importance of each feature
 
     def fit(self, X, y):
         n_features = X.shape[1]
@@ -691,16 +698,21 @@ class DecisionTreeClassifier:
         node = Node()
         node.n_samples = len(y)
 
+        # Prediction based on the majority class
         vals, counts = np.unique(y, return_counts=True)
         node.class_counts = {int(v): int(c) for v, c in zip(vals, counts)}
         node.prediction = vals[np.argmax(counts)]
 
+        # Stopping criteria:
+        # - Reached the maximum depth
+        # - Not enough samples to split
+        # - All samples belong to the same class
         if (depth >= self.max_depth or len(y) < self.min_samples_split or len(vals) == 1):
             node.is_leaf = True
             return node
 
         best = best_split_overall(X, y)
-        if (best["gain"] <= 0 or best["feature"] is None):
+        if (best["gain"] <= 0 or best["feature"] is None): # No meaningful split found
             node.is_leaf = True
             return node
 
@@ -719,11 +731,13 @@ class DecisionTreeClassifier:
             node.is_leaf = True
             return node
 
+        # Recursively build left and right children
         node.left = self._build_tree(X_left, y_left, depth + 1)
         node.right = self._build_tree(X_right, y_right, depth + 1)
 
         return node
 
+    # Predict the class label for a single sample
     def _predict_one(self, x, node):
         while not node.is_leaf:
             if x[node.feature] <= node.threshold:
@@ -732,6 +746,7 @@ class DecisionTreeClassifier:
                 node = node.right
         return node.prediction
 
+    # Predict class labels for a given dataset
     def predict(self, X):
         return np.array([self._predict_one(x, self.root) for x in X])
 
@@ -744,18 +759,24 @@ class DecisionTreeClassifier:
 
 # %%
 depths = [2, 4, 6, 8, 10]
-depth_accuracies = []
+val_depth_accuracies = []
+train_depth_accuracies = []
 best_depth = -1
 best_depth_acc = -1
 
 for depth in depths:
-    dec_tree = DecisionTreeClassifier(max_depth=depth)
+    dec_tree = DecisionTreeClass(max_depth=depth)
     dec_tree.fit(X_train, y_train)
+    
     predictions = dec_tree.predict(X_val)
     acc = accuracy_score(y_val, predictions)
-    depth_accuracies.append(acc)
+    val_depth_accuracies.append(acc)
+
+    train_predictions = dec_tree.predict(X_train)
+    train_acc = accuracy_score(y_train, train_predictions)
+    train_depth_accuracies.append(train_acc)
     
-    print(f"Depth: {depth}, Validation Accuracy: {acc:.4f}")
+    print(f"Depth: {depth}, Validation Accuracy: {acc:.4f}, Training Accuracy: {train_acc:.4f}")
 
     if acc > best_depth_acc:
         best_depth_acc = acc
@@ -765,10 +786,12 @@ print(f"Best Depth: {best_depth}, Validation Accuracy: {best_depth_acc:.4f}")
 
 
 # %%
-plt.plot(depths, depth_accuracies)
+plt.plot(depths, val_depth_accuracies, label="Validation Accuracy")
+plt.plot(depths, train_depth_accuracies, label="Training Accuracy")
 plt.xlabel("Max Depth")
-plt.ylabel("Validation Accuracy")
+plt.ylabel("Accuracy")
 plt.title("Decision Tree Depth vs Accuracy")
+plt.legend()
 plt.grid(True)
 plt.show()
 
@@ -777,16 +800,22 @@ plt.show()
 
 # %%
 min_samples = [2, 5, 10]
-min_samples_accuracies = []
+val_min_samples_accuracies = []
+train_min_samples_accuracies = []
 best_min_samples = -1
 best_min_samples_acc = -1
 
 for min_sample in min_samples:
-    dec_tree = DecisionTreeClassifier(min_samples_split=min_sample)
+    dec_tree = DecisionTreeClass(min_samples_split=min_sample)
     dec_tree.fit(X_train, y_train)
+
     predictions = dec_tree.predict(X_val)
     acc = accuracy_score(y_val, predictions)
-    min_samples_accuracies.append(acc)
+    val_min_samples_accuracies.append(acc)
+
+    train_predictions = dec_tree.predict(X_train)
+    train_acc = accuracy_score(y_train, train_predictions)
+    train_min_samples_accuracies.append(train_acc)
     
     print(f"Min Samples Split: {min_sample}, Validation Accuracy: {acc:.4f}")
 
@@ -797,10 +826,12 @@ for min_sample in min_samples:
 print(f"Best Min Samples Split: {best_min_samples}, Validation Accuracy: {best_min_samples_acc:.4f}")
 
 # %%
-plt.plot(min_samples, min_samples_accuracies)
+plt.plot(min_samples, val_min_samples_accuracies, label="Validation Accuracy")
+plt.plot(min_samples, train_min_samples_accuracies, label="Training Accuracy")
 plt.xlabel("Minimum Samples Split")
-plt.ylabel("Validation Accuracy")
+plt.ylabel("Accuracy")
 plt.title("Decision Tree Minimum Samples Split vs Accuracy")
+plt.legend()
 plt.grid(True)
 plt.show()
 
@@ -814,7 +845,7 @@ best_combined_acc = -1
 
 for depth in depths:
     for min_sample in min_samples:
-        dec_tree = DecisionTreeClassifier(max_depth=depth, min_samples_split=min_sample)
+        dec_tree = DecisionTreeClass(max_depth=depth, min_samples_split=min_sample)
         dec_tree.fit(X_train, y_train)
         predictions = dec_tree.predict(X_val)
         acc = accuracy_score(y_val, predictions)
@@ -835,7 +866,7 @@ print(f"Best Combined Hyperparameters:\nDepth: {best_combined_depth}, Min Sample
 X_final_train = np.vstack((X_train, X_val))
 y_final_train = np.hstack((y_train, y_val))
 
-final_dec_tree = DecisionTreeClassifier(max_depth=best_combined_depth, min_samples_split=best_combined_min_samples)
+final_dec_tree = DecisionTreeClass(max_depth=best_combined_depth, min_samples_split=best_combined_min_samples)
 final_dec_tree.fit(X_final_train, y_final_train)
 final_predictions = final_dec_tree.predict(X_test)
 
