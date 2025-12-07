@@ -8,7 +8,7 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.18.1
 #   kernelspec:
-#     display_name: base
+#     display_name: Python 3 (ipykernel)
 #     language: python
 #     name: python3
 # ---
@@ -140,7 +140,18 @@ def predict(X, pi, mu, Sigma_reg):
 # ## A3. Hyperparameter Tuning and Evaluation
 
 # %%
-lambdas = [1e-8, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.0]
+lambdas = [
+    1e-12, 1e-10, 5e-10,
+    1e-8, 5e-8,
+    1e-6, 5e-6,
+    1e-5, 5e-5,
+    1e-4, 5e-4,
+    1e-3, 5e-3,
+    1e-2, 5e-2,
+    1e-1, 5e-1,
+    1.0, 2.0, 5.0, 10.0
+]
+
 best_lambda = None
 best_val_acc = -1
 
@@ -173,11 +184,11 @@ print("Classification Report:")
 print(classification_report(y_test, y_test_pred))
 
 # Confusion matrix
-cm = confusion_matrix(y_test, y_test_pred)
-disp = ConfusionMatrixDisplay(confusion_matrix=cm)
-disp.plot(cmap="Blues")
-plt.title("Gaussian Generative Classifier — Confusion Matrix")
-plt.show()
+# cm = confusion_matrix(y_test, y_test_pred)
+# disp = ConfusionMatrixDisplay(confusion_matrix=cm)
+# disp.plot(cmap="Blues")
+# plt.title("Gaussian Generative Classifier — Confusion Matrix")
+# plt.show()
 
 # %% [markdown]
 # # A4. Report
@@ -185,118 +196,109 @@ plt.show()
 # %% [markdown]
 # ## 1. Explanation of the Generative Model
 #
-# ### Assumptions for the Generative Model
+# ### Assumptions for the Model  
+# This classifier assumes that each class (digit) generates its feature vectors from a multivariate Gaussian distribution.
 #
-# In a Gaussian generative classifier, we assume that classification works by modeling how the data is generated for each class.  
-# We make two key assumptions:
-#
-# - **Prior over labels**  
-#   \( p(y = k) = \pi_k \)  
-#   This represents how likely each digit class is before seeing any feature values.
+# - **Prior probability of a class**  
+#   We estimate how common each digit is in the training set. This gives us the prior probabilities πₖ.
 #
 # - **Class-conditional distribution**  
-#   \( p(x \mid y = k) \sim \mathcal{N}(\mu_k, \Sigma) \)  
-#   We assume that the feature vectors of all classes follow a multivariate Gaussian distribution with:
-#   - a **class-specific mean vector** \( \mu_k \)
-#   - a **shared covariance matrix** \( \Sigma \) across all classes  
-#     (this is the LDA assumption)
+#   For each digit, we assume the features are drawn from a Gaussian distribution with:
+#   - a mean vector μₖ specific to the class  
+#   - a **shared covariance matrix Σ** across all classes (LDA assumption)
 #
-# ### Estimating the Parameters
+# ### Parameter Estimation  
+# From the training data:
 #
-# From the training set:
+# - **πₖ (class prior):** fraction of samples belonging to class k  
+# - **μₖ (class mean):** average feature vector of all samples in class k  
+# - **Σ (shared covariance):** average of outer products of (x − μₖ), accumulated across all classes
 #
-# - **Class prior**  
-#   \[
-#   \pi_k = \frac{\text{number of samples in class } k}{\text{total number of samples}}
-#   \]
+# ### Why Regularization Is Needed  
+# The covariance matrix Σ becomes nearly singular in high dimensions, making its inverse unstable.  
+# To fix this, we use a regularized covariance:
 #
-# - **Class mean vector**  
-#   \[
-#   \mu_k = \frac{1}{N_k} \sum_{i: y_i = k} x_i
-#   \]
+# Σₗ = Σ + λI
 #
-# - **Shared covariance matrix**  
-#   \[
-#   \Sigma = \frac{1}{N} \sum_{k} \sum_{i: y_i = k} (x_i - \mu_k)(x_i - \mu_k)^T
-#   \]
+# Effect of λ:
 #
-# ### Why We Regularize the Covariance
-#
-# High-dimensional data often makes the covariance matrix nearly singular.  
-# To fix this, we apply:
-#
-# \[
-# \Sigma_\lambda = \Sigma + \lambda I
-# \]
-#
-# This **regularization**:
-#
-# - prevents the covariance matrix from becoming non-invertible  
-# - stabilizes the model  
-# - reduces overfitting by shrinking the covariance  
-# - controls how smooth the decision boundaries are
-#
-# Smaller λ → more flexible model, may overfit  
-# Larger λ → smoother model, may underfit
+# - **Small λ:** more flexible model, may overfit but works well if Σ is well-estimated  
+# - **Large λ:** smoother decision boundaries, but too large λ causes underfitting
 #
 # ---
 #
-# ## 2. Table of Validation Accuracy for Different λ Values
+# ## 2. Validation Accuracy for Different λ Values
 #
-# | λ value | Validation Accuracy |
-# |--------|---------------------|
-# | 1e-4   | … |
-# | 1e-3   | … |
-# | 1e-2   | … |
-# | 1e-1   | … |
+# | λ value  | Validation Accuracy |
+# |----------|---------------------|
+# | 1e-12    | 0.9444 |
+# | 1e-10    | 0.9444 |
+# | 5e-10    | 0.9444 |
+# | 1e-08    | 0.9444 |
+# | 5e-08    | 0.9444 |
+# | 1e-06    | 0.9444 |
+# | 5e-06    | 0.9444 |
+# | 1e-05    | 0.9444 |
+# | 5e-05    | 0.9444 |
+# | 1e-04    | 0.9444 |
+# | 5e-04    | 0.9444 |
+# | 1e-03    | 0.9444 |
+# | 5e-03    | 0.9444 |
+# | 1e-02    | 0.9444 |
+# | 5e-02    | 0.9407 |
+# | 1e-01    | 0.9444 |
+# | 5e-01    | 0.9296 |
+# | 1e+00    | 0.9222 |
+# | 2e+00    | 0.8852 |
+# | 5e+00    | 0.8593 |
+# | 1e+01    | 0.8481 |
 #
-# (You will fill these in after running your code.)
+# **Best validation accuracy:** 0.9444  
+# **Best λ values:** all small λ (1e-12 up to 1e-2 and also 1e-1) achieve the same accuracy.
 #
 # ---
 #
 # ## 3. Final Test Results
 #
-# Using the selected λ (the one with the highest validation accuracy), we retrain on the combined training + validation sets and evaluate on the test set.
+# Using the best λ value (λ=1e-2), the model was retrained and evaluated on the test set.
 #
-# ### Performance Metrics
+# ### Test Accuracy  
+# **0.96296**
 #
-# - **Test accuracy:** …  
-# - **Macro-averaged precision:** …  
-# - **Macro-averaged recall:** …  
-# - **Macro-averaged F1-score:** …
+# ### Macro Metrics  
+# - **Macro Precision:** 0.96  
+# - **Macro Recall:** 0.96  
+# - **Macro F1-score:** 0.96  
 #
-# ### Confusion Matrix
 #
-# (Insert your plotted confusion matrix as an image, or paste the numerical table.)
+# ### Confusion Matrix  
+# ![Confusion Matrix](confusion-matrix-a.png)
 #
 # ---
 #
 # ## 4. Discussion
 #
-# ### Digit Confusions
+# ### Digit Confusions  
+# Based on the classification report and typical MNIST behavior:
 #
-# Some digits are visually similar and therefore often misclassified.  
-# Typical confusions might include:
+# - Digits **8** and **9** show lower recall (0.85), meaning they are sometimes misclassified.
+# - Most other digits achieve near-perfect performance.
+# - Curved digits like **8**, **9**, or **3** are usually more prone to confusion due to overlapping pixel structures.
 #
-# - **3 vs 5** — similar curved structure  
-# - **4 vs 9** — similar upper sections  
-# - **7 vs 9** — overlapping shapes in pixel space  
+# ### Effect of λ on Performance  
+# The validation accuracy was **very stable** for a huge range of small λ values (1e-12 → 1e-2).  
+# Only large λ values significantly reduced accuracy:
 #
-# Your own results will show which pairs were most confused in the confusion matrix.
+# - λ ≥ 0.5 began to noticeably degrade performance  
+# - Very large λ (5, 10) clearly underfit the data
 #
-# ### Effect of λ on Performance
+# This shows that the covariance matrix was already reasonably well-estimated, and only light regularization was needed.
 #
-# The choice of λ significantly affects classification:
+# ### Overall Observations  
+# - The Gaussian generative model performed, achieving about **96% test accuracy**.  
+# - More advanced discriminative models (logistic regression, neural networks) usually outperform it, but for a simple model, its performance is strong.
+#  
 #
-# - Very small λ sometimes leads to instability or overfitting.
-# - Larger λ smooths the covariance, improving generalization.
-# - In our experiments, the best λ was …, which gave the highest validation accuracy.
-#
-# ### Overall Observations
-#
-# - The Gaussian generative classifier (LDA) performs well when each class forms a roughly Gaussian cluster.  
-# - However, MNIST digits are not perfectly Gaussian and classes overlap in ways that the model cannot fully capture.
-# - The model is efficient, interpretable, and relatively robust, but more advanced discriminative models (e.g., logistic regression, neural nets) usually outperform it on handwritten digits.
 #
 
 # %% [markdown] id="vyKmdrLqs1wu"
