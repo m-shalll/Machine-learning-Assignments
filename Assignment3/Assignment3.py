@@ -39,6 +39,8 @@ from kagglehub import KaggleDatasetAdapter
 from sklearn.metrics import accuracy_score
 from sklearn.naive_bayes import MultinomialNB
 import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy.stats import chi2_contingency
 
 # %% [markdown] id="0v2yiieTs16d"
 # # Part A
@@ -430,6 +432,35 @@ print(f"\nOptimal alpha found on validation set: {best_alpha} with Accuracy: {be
 
 optimal_nb = NaiveBayes(alpha=best_alpha)
 optimal_nb.fit(X_train, y_train)
+
+# %%
+print("\nCorrelation Heatmap:")
+
+def cramers_v(x, y):
+    confusion_matrix = pd.crosstab(x, y)
+    chi2 = chi2_contingency(confusion_matrix)[0]
+    n = confusion_matrix.sum().sum()
+    phi2 = chi2 / n
+
+df_corr = df[categorical_features].copy()
+
+rows = []
+for var1 in categorical_features:
+    col = []
+    for var2 in categorical_features:
+        cramers = cramers_v(df_corr[var1], df_corr[var2])
+        col.append(round(cramers, 2))
+    rows.append(col)
+
+cramers_results = np.array(rows)
+df_cramers = pd.DataFrame(cramers_results, columns=categorical_features, index=categorical_features)
+
+plt.figure(figsize=(10, 8))
+sns.heatmap(df_cramers, annot=True, cmap='coolwarm', fmt='.2f', linewidths=.5)
+plt.title("Cramér's V Correlation Heatmap (Categorical Features)")
+plt.show()
+
+
 
 # %%
 print("Feature Selection Analysis:")
