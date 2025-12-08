@@ -319,12 +319,13 @@ target = 'income'
 X_arr = np.empty((len(df), len(categorical_features)), dtype=int)
 label_encoders = {}
 
+# Encode each categorical feature using a separate LabelEncoder
 for i, col in enumerate(categorical_features):
     le = LabelEncoder()
-    X_arr[:, i] = le.fit_transform(df[col].astype(str))
-    label_encoders[col] = le
+    X_arr[:, i] = le.fit_transform(df[col].astype(str)) # Store the encoded values in X_arr
+    label_encoders[col] = le #Keep the encoder in label_encoders so we can interpret categories later
 
-y_arr = LabelEncoder().fit_transform(df[target].astype(str))
+y_arr = LabelEncoder().fit_transform(df[target].astype(str)) # Encode the target variable (income) into integer labels(0/1)
 
 X_train, X_temp, y_train, y_temp = train_test_split(X_arr, y_arr, test_size=0.3, stratify=y_arr, random_state=42)
 X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.5, stratify=y_temp, random_state=42)
@@ -335,9 +336,10 @@ print(f"Data Loaded: Train {X_train.shape}, Val {X_val.shape}, Test {X_test.shap
 # %% id="1oTe9bMzJ5Ax"
 class NaiveBayes():
     def __init__(self, alpha=1.0):
+        # Smoothing parameter α, used in likelihood and prior calculations
         self.alpha = alpha
 
-    def fit(self, X, y):
+    def fit(self, X, y): # Store training data and compute basic dataset info
         self.X, self.y = X, y
         self.classes = np.unique(y)
         self.parameters = []
@@ -345,37 +347,37 @@ class NaiveBayes():
         self.num_classes = len(self.classes)
 
         for i, c in enumerate(self.classes):
-            X_where_c = X[np.where(y == c)]
+            X_where_c = X[np.where(y == c)] # Extract all samples belonging to class c
             class_count = X_where_c.shape[0]
 
             self.parameters.append([])
 
-            for col_idx, col in enumerate(X_where_c.T):
-                all_feature_values = np.unique(X[:, col_idx])
+            for col_idx, col in enumerate(X_where_c.T): # Compute likelihoods for every feature column
+                all_feature_values = np.unique(X[:, col_idx]) # All possible values this feature can take in the whole dataset
                 num_feature_values = len(all_feature_values)
 
-                values, counts = np.unique(col, return_counts=True)
+                values, counts = np.unique(col, return_counts=True) # Count occurrences of each feature value within class c
                 counts_dict = dict(zip(values, counts))
 
-                denominator = class_count + (self.alpha * num_feature_values)
+                denominator = class_count + (self.alpha * num_feature_values)  # For Laplace smoothing: |C_k| + α * (#feature_values)
 
-                probs = {}
+                probs = {} # Compute smoothed likelihoods P(x_i | C_k)
                 for val in all_feature_values:
                     count = counts_dict.get(val, 0)
                     probs[val] = (count + self.alpha) / denominator
 
-                unseen_prob = (self.alpha) / denominator
+                unseen_prob = (self.alpha) / denominator # Feature values never seen in this class
 
                 parameters = {"probs": probs, "unseen_prob": unseen_prob}
                 self.parameters[i].append(parameters)
 
-    def _calculate_likelihood(self, params, x):
+    def _calculate_likelihood(self, params, x): # Return P(x_i | C_k);
         probs = params["probs"]
         unseen_prob = params["unseen_prob"]
 
         return probs.get(x, unseen_prob)
 
-    def _calculate_prior(self, c):
+    def _calculate_prior(self, c): # Compute smoothed prior P(C_k) = (count_k + α) / (N + α * K)
         count_class_k = np.sum(self.y == c)
         numerator = count_class_k + self.alpha
         denominator = self.total_samples + (self.alpha * self.num_classes)
@@ -383,6 +385,8 @@ class NaiveBayes():
         return numerator / denominator
 
     def _calculate_posteriors(self, sample):
+        # Compute log-posterior for each class:
+        # log P(C_k) + Σ log P(x_i | C_k)
         log_posteriors = []
         for i, c in enumerate(self.classes):
             posterior = np.log(self._calculate_prior(c))
@@ -395,7 +399,7 @@ class NaiveBayes():
 
         return log_posteriors
 
-    def _predict_label(self, sample):
+    def _predict_label(self, sample): 
         log_posteriors = self._calculate_posteriors(sample)
         return self.classes[np.argmax(log_posteriors)]
 
@@ -414,6 +418,7 @@ def evaluate_model(model, X, y):
 
 
 # %%
+# Getting best alpha value
 print("\nSmoothing Parameter Analysis:")
 alpha_values = [0.1, 0.5, 1.0, 2.0, 5.0]
 best_alpha = 1.0
@@ -438,7 +443,7 @@ optimal_nb.fit(X_train, y_train)
 # %%
 print("\nCorrelation Heatmap:")
 
-def cramers_v(x, y):
+def cramers_v(x, y): # Compute Cramér's V, a measure of association between two categorical variables
     confusion_matrix = pd.crosstab(x, y)
     chi2 = chi2_contingency(confusion_matrix)[0]
     n = confusion_matrix.sum().sum()
@@ -448,6 +453,7 @@ def cramers_v(x, y):
 
 df_corr = df[categorical_features].copy()
 
+#  Matrix of pairwise Cramér's V values for categorical features
 rows = []
 for var1 in categorical_features:
     col = []
