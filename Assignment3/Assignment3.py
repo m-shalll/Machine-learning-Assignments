@@ -949,6 +949,47 @@ plt.show()
 # %% [markdown] id="unhx9Ykds1e_"
 # # Part D
 
+# %% [markdown]
+# # Random Forest Classifier Implementation
+#
+# ## 1\. Overview
+# The core principle behind this is Bagging  with Feature Randomness. This approach reduces the high variance typical of individual decision trees, making less prone to overfitting.
+#
+# ## 2\. Algorithm & Implementation Details
+#
+# 1.  **Bootstrap Sampling:** We create a new dataset $D_t$ by sampling $N$ instances from the original dataset $D$ uniformly at random **with replacement**.
+#
+#       * *Code Implementation:*
+#         ```python
+#         indices = np.random.choice(n_samples, n_samples, replace=True)
+#         X_sample, y_sample = X[indices], y[indices]
+#         ```
+# 2.  **Tree Construction:** A `DecisionTreeClassifier` is initialized and fitted on this sample ($X_{sample}, y_{sample}$).
+#
+# 3.  **Storage:** The trained tree is stored in the `self.trees` list for later use.
+#
+# ### Prediction (`predict`)
+#
+# Once the forest is trained, prediction is a process known as **Majority Voting**.
+#
+# **The Logic:**
+# Given a new input vector
+#
+# 1. Every tree in the forest makes an independent prediction
+#
+#       * *Code Implementation:*
+#         ```python
+#         tree_preds = np.array([tree.predict(X) for tree in self.trees])
+#         ```
+#         This results in a matrix of size $(T \times N_{test})$, where each row represents a tree's predictions for all samples.
+#
+# 2. For each sample, we count the votes for each class and select the class with the highest count.
+#       * *Code Implementation:*
+#         ```python
+#         vals, counts = np.unique(votes, return_counts=True)
+#         majority_class = vals[np.argmax(counts)]
+#         ```
+
 # %%
 class RandomForestClassifier:
     def __init__(self, n_trees=10, max_depth=10, min_samples_split=5, max_features=None):
@@ -989,6 +1030,32 @@ class RandomForestClassifier:
             
         return np.array(final_preds)
 
+
+# %% [markdown]
+# # Hyperparameter Tuning
+# This optimizes the Random Forest model by tuning the number of trees and the number of features considered at each split (`max_features`), while keeping the depth and split parameters fixed from the best Decision Tree model.
+#
+# We iterate through a set of defined hyperparameters to find the combination that has the highest validation accuracy.
+# * **Fixed Parameters:** `max_depth` and `min_samples_split` are inherited from the optimized single Decision Tree (Part C) to ensure individual trees are reasonably strong.
+# * **Variable Parameters:**
+#     * **Number of Trees ($T$):** Tested values `[5, 10, 30, 50]`. Increasing trees generally improves stability but increases computational cost.
+#     * **Max Features:** Tested `sqrt(d)` (standard heuristic for classification) and `d/2` (giving trees more information).
+#
+# ### 2. Evaluation Process
+# For every combination:
+# 1.  **Train:** A `RandomForestClassifier` is instantiated and trained on the **Training Set**.
+# 2.  **Validate:** The model predicts labels for the **Validation Set**, and accuracy is calculated.
+# 3.  **Track Best:** The combination with the highest validation accuracy is stored.
+#
+# ### 3. Final Model Training
+# Once the best hyperparameters are identified:
+# * **Data Merging:** The Training and Validation sets are combined (`np.vstack`) to maximize the data available for the final model.
+# * **Retraining:** The final `RandomForestClassifier` is retrained on this combined dataset using the optimal hyperparameters found during the search.
+# ##### We merge them as:
+# models generally perform better when they see more examples.
+# * **During Tuning:** We need the Validation set separate to optimize hyperparameters.
+# * **After Tuning:** Once we have chosen the best hyperparameters, the Validation set's job is finished and can be merged with training data.
+#
 
 # %%
 d = X_train.shape[1]
