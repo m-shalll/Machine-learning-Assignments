@@ -733,9 +733,6 @@ class DecisionTreeClassifier:
         n_features = X.shape[1]
         self.feature_importances_ = np.zeros(n_features)
         self.root = self._build_tree(X, y, depth=0)
-        total = self.feature_importances_.sum()
-        if total > 0:
-            self.feature_importances_ /= total
         return self
 
     def _build_tree(self, X, y, depth):
@@ -944,7 +941,7 @@ for i in range(len(feature_names)):
 plt.figure(figsize=(10, 6))
 plt.title("Feature Importance (Information Gain)")
 plt.bar(range(len(feature_names)), importances[indices], align="center")
-plt.xticks(range(len(feature_names)), [feature_names[i] for i in indices], rotation=45)
+plt.xticks(range(len(feature_names)), [feature_names[i] for i in indices], rotation=70)
 plt.tight_layout()
 plt.show()
 
