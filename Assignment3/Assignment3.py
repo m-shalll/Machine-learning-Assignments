@@ -8,7 +8,7 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.18.1
 #   kernelspec:
-#     display_name: Python 3 (ipykernel)
+#     display_name: base
 #     language: python
 #     name: python3
 # ---
@@ -686,14 +686,16 @@ def best_split_overall(X, y, max_features=None):
         feature_indices = np.random.choice(feature_indices, max_features, replace=False)
     
     # Only loop through selected features
+    feature_importances_ = np.zeros(X.shape[1])
     for j in feature_indices:
         thr, gain = best_split_for_feature(X[:, j], y) # Reusing your existing function
         if gain > best["gain"]:
             best["gain"] = gain
             best["feature"] = j
             best["threshold"] = thr
+        feature_importances_[j] += gain  # Weight by number of samples
 
-    return best
+    return best, feature_importances_
 
 
 # %% [markdown] id="NQ5wBR5xuNRm"
@@ -740,15 +742,21 @@ class DecisionTreeClassifier:
         node = Node()
         node.n_samples = len(y)
 
+        # Prediction based on the majority class
         vals, counts = np.unique(y, return_counts=True)
         node.class_counts = {int(v): int(c) for v, c in zip(vals, counts)}
         node.prediction = vals[np.argmax(counts)]
 
+        # Stopping criteria:
+        # - Reached the maximum depth
+        # - Not enough samples to split
+        # - All samples belong to the same class
         if (depth >= self.max_depth or len(y) < self.min_samples_split or len(vals) == 1):
             node.is_leaf = True
             return node
 
-        best = best_split_overall(X, y, self.max_features)
+        best, curr_feature_importances_ = best_split_overall(X, y, self.max_features)
+        self.feature_importances_ += curr_feature_importances_
         if (best["gain"] <= 0 or best["feature"] is None):
             node.is_leaf = True
             return node
@@ -758,8 +766,6 @@ class DecisionTreeClassifier:
         node.feature = feature
         node.threshold = threshold
 
-        self.feature_importances_[feature] += best["gain"]
-
         left_mask = X[:, feature] <= threshold
         X_left, y_left = X[left_mask], y[left_mask]
         X_right, y_right = X[~left_mask], y[~left_mask]
@@ -768,11 +774,13 @@ class DecisionTreeClassifier:
             node.is_leaf = True
             return node
 
+        # Recursively build left and right children
         node.left = self._build_tree(X_left, y_left, depth + 1)
         node.right = self._build_tree(X_right, y_right, depth + 1)
 
         return node
-
+    
+    # Predict the class label for a single sample
     def _predict_one(self, x, node):
         while not node.is_leaf:
             if x[node.feature] <= node.threshold:
@@ -780,7 +788,8 @@ class DecisionTreeClassifier:
             else:
                 node = node.right
         return node.prediction
-
+    
+    # Predict class labels for a given dataset
     def predict(self, X):
         return np.array([self._predict_one(x, self.root) for x in X])
 
@@ -911,7 +920,33 @@ print("Classification Report:")
 print(classification_report(y_test, final_predictions))
 
 print("Confusion Matrix:")
-print(confusion_matrix(y_test, final_predictions))
+cm = confusion_matrix(y_test, final_predictions)
+disp = ConfusionMatrixDisplay(confusion_matrix=cm)
+disp.plot(cmap='Blues')
+plt.title("Decision Tree Confusion Matrix")
+plt.show()
+
+# %%
+# Extract and Rank Feature Importances
+importances = final_dec_tree.feature_importances_
+indices = np.argsort(importances)[::-1] # Sort descending 
+
+print("\nFeature Importance Ranking")
+for i in range(len(feature_names)):
+    idx = indices[i]
+    # Get the name and score
+    name = feature_names[idx]
+    score = importances[idx]
+    
+    print(f"{i+1}. {name}: {score:.4f}")
+
+# Visualizing 
+plt.figure(figsize=(10, 6))
+plt.title("Feature Importance (Information Gain)")
+plt.bar(range(len(feature_names)), importances[indices], align="center")
+plt.xticks(range(len(feature_names)), [feature_names[i] for i in indices], rotation=45)
+plt.tight_layout()
+plt.show()
 
 
 # %% [markdown] id="unhx9Ykds1e_"
