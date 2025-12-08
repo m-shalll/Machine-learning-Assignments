@@ -1097,7 +1097,7 @@ for T in n_trees_options:
         
         print(f"{T:<10} | {max_feat:<15} | {acc:.4f}")
         
-        if acc > best_rf_acc:
+        if acc >= best_rf_acc:
             best_rf_acc = acc
             best_rf_params = {'n_trees': T, 'max_features': max_feat}
 
@@ -1137,3 +1137,31 @@ plt.title('Random Forest Confusion Matrix')
 plt.ylabel('True Label')
 plt.xlabel('Predicted Label')
 plt.show() 
+
+# %% [markdown]
+# ## 1. Performance Comparison
+# Based on the results from Part C and Part D, we observe a distinction in performance on the test set.
+#
+# * **Single Decision Tree:**
+#     * **Accuracy:** lower than the Random Forest ~88%
+#     * **Stability:** The decision tree is more sensitive to the specific split of the training data.
+#
+# * **Random Forest:**
+#     * **Accuracy:** Consistently higher ~92%.
+#     * **Stability:** The model is robust. Because it aggregates votes from many trees, one "bad" tree caused by an outlier data point is outvoted by the majority.
+#
+# ## 2. Bias and Variance Analysis
+# The most significant difference between the two models lies in how they handle the **Bias-Variance Tradeoff**.
+#
+# ### A. Single Decision Tree (High Variance)
+# * **Bias (Low):** A fully grown decision tree (or one with sufficient depth) has **low bias**. It can learn very complex, non-linear relationships and fit the training data almost perfectly.
+# * **Variance (High):** The single tree suffers from **high variance**. It overfits the training data by capturing noise and specific anomalies as if they were true patterns.
+#
+# ### B. Random Forest (Variance Reduction)
+# * **Bias (Low):** The Random Forest maintains the **low bias** of the decision tree. Since each individual tree in the forest is allowed to grow deep (using the optimized hyperparameters from Part C), they all individually understand the complex patterns in the data.
+# * **Variance (Reduced):** The primary advantage of Random Forest is **reducedd variance**.
+#     * By averaging the predictions of multiple many trees, the "noise" cancels out. If one tree overreacts to an outlier, other trees (which didn't see that outlier in their sample) will correct the prediction.
+#     * By forcing trees to split on random subsets of features (`max_features`), the forest ensures the trees are diverse. This lowers the variance of the average.
+#
+# ## 3. Conclusion
+# While a single decision tree is capable of learning the training data well (Low Bias), it fails to generalize effectively due to overfitting (High Variance). The Random Forest solves this by combining the strength of many trees, smoothing out the decision boundaries and providing a model that is both accurate and robust.
