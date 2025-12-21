@@ -21,6 +21,12 @@ import numpy as np
 
 
 # %% [markdown]
+# # PCA
+
+# %% [markdown]
+# # Autoencoder
+
+# %% [markdown]
 # # K-Means
 
 # %% [markdown]
@@ -144,3 +150,12 @@ class KMeans:
         self.fit(X)
         return self.labels_
 
+
+# %% [markdown]
+# # GMM
+
+# %% [markdown]
+# # Internal Metrics
+
+# %% [markdown]
+# # External Metrics
