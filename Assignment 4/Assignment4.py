@@ -23,8 +23,204 @@ import numpy as np
 # %% [markdown]
 # # PCA
 
+# %%
+class PCA:
+    def __init__(self, n_components):
+        self.n_components = n_components
+        self.mean = None
+        self.components = None
+        self.eigenvalues = None
+        self.explained_variance_ratio_ = None
+
+    def fit(self, X):
+        # 1. Center the data
+        self.mean = np.mean(X, axis=0)
+        X_centered = X - self.mean
+
+        # 2. Covariance matrix
+        cov_matrix = np.cov(X_centered, rowvar=False)
+
+        # 3. Eigenvalue decomposition
+        eigenvalues, eigenvectors = np.linalg.eigh(cov_matrix)
+
+        # 4. Sort eigenvalues & eigenvectors (descending)
+        sorted_idx = np.argsort(eigenvalues)[::-1]
+        eigenvalues = eigenvalues[sorted_idx]
+        eigenvectors = eigenvectors[:, sorted_idx]
+
+        # 5. Select top components
+        self.eigenvalues = eigenvalues[:self.n_components]
+        self.components = eigenvectors[:, :self.n_components]
+
+        # 6. Explained variance ratio
+        total_variance = np.sum(eigenvalues)
+        self.explained_variance_ratio_ = self.eigenvalues / total_variance
+
+    def transform(self, X):
+        X_centered = X - self.mean
+        return np.dot(X_centered, self.components)
+
+    def inverse_transform(self, X_reduced):
+        return np.dot(X_reduced, self.components.T) + self.mean
+
+    def reconstruction_error(self, X):
+        X_reduced = self.transform(X)
+        X_reconstructed = self.inverse_transform(X_reduced)
+        return np.mean((X - X_reconstructed) ** 2)
+
+
+
 # %% [markdown]
 # # Autoencoder
+
+# %%
+class Activation:
+    @staticmethod
+    def relu(x):
+        return np.maximum(0, x)
+
+    @staticmethod
+    def relu_derivative(x):
+        return (x > 0).astype(float)
+
+    @staticmethod
+    def sigmoid(x):
+        return 1 / (1 + np.exp(-x))
+
+    @staticmethod
+    def sigmoid_derivative(x):
+        s = Activation.sigmoid(x)
+        return s * (1 - s)
+
+    @staticmethod
+    def tanh(x):
+        return np.tanh(x)
+
+    @staticmethod
+    def tanh_derivative(x):
+        return 1 - np.tanh(x) ** 2
+
+class Autoencoder:
+    def __init__(
+        self,
+        layer_sizes,
+        activation="relu",
+        learning_rate=0.01,
+        l2_lambda=0.0,
+        lr_decay=0.0
+    ):
+        self.layer_sizes = layer_sizes
+        self.learning_rate = learning_rate
+        self.initial_lr = learning_rate
+        self.l2_lambda = l2_lambda
+        self.lr_decay = lr_decay
+
+        self.weights = []
+        self.biases = []
+
+        self.activations = []
+        self.z_values = []
+
+        # Activation selection
+        if activation == "relu":
+            self.act = Activation.relu
+            self.act_deriv = Activation.relu_derivative
+        elif activation == "sigmoid":
+            self.act = Activation.sigmoid
+            self.act_deriv = Activation.sigmoid_derivative
+        elif activation == "tanh":
+            self.act = Activation.tanh
+            self.act_deriv = Activation.tanh_derivative
+        else:
+            raise ValueError("Unsupported activation")
+
+        self._initialize_parameters()
+
+    def _initialize_parameters(self):
+        for i in range(len(self.layer_sizes) - 1):
+            weight = np.random.randn(
+                self.layer_sizes[i],
+                self.layer_sizes[i + 1]
+            ) * np.sqrt(2 / self.layer_sizes[i])
+            bias = np.zeros((1, self.layer_sizes[i + 1]))
+            self.weights.append(weight)
+            self.biases.append(bias)
+
+    def forward(self, X):
+        self.activations = [X]
+        self.z_values = []
+
+        for W, b in zip(self.weights, self.biases):
+            z = np.dot(self.activations[-1], W) + b
+            self.z_values.append(z)
+            a = self.act(z)
+            self.activations.append(a)
+
+        return self.activations[-1]
+
+    def compute_loss(self, X, X_hat):
+        mse = np.mean((X - X_hat) ** 2)
+        l2_penalty = self.l2_lambda * sum(np.sum(W ** 2) for W in self.weights)
+        return mse + l2_penalty
+
+    def backward(self, X):
+        grads_W = []
+        grads_b = []
+
+        # MSE loss derivative
+        delta = (self.activations[-1] - X) * self.act_deriv(self.z_values[-1])
+
+        for i in reversed(range(len(self.weights))):
+            dW = np.dot(self.activations[i].T, delta)
+            dB = np.sum(delta, axis=0, keepdims=True)
+
+            # L2 regularization
+            dW += self.l2_lambda * self.weights[i]
+
+            grads_W.insert(0, dW)
+            grads_b.insert(0, dB)
+
+            if i != 0:
+                delta = np.dot(delta, self.weights[i].T) * self.act_deriv(self.z_values[i - 1])
+
+        return grads_W, grads_b
+
+    def update_parameters(self, grads_W, grads_b):
+        for i in range(len(self.weights)):
+            self.weights[i] -= self.learning_rate * grads_W[i]
+            self.biases[i] -= self.learning_rate * grads_b[i]
+
+    def train(self, X, epochs=100, batch_size=32):
+        n_samples = X.shape[0]
+
+        for epoch in range(epochs):
+            indices = np.random.permutation(n_samples)
+            X_shuffled = X[indices]
+
+            for start in range(0, n_samples, batch_size):
+                end = start + batch_size
+                batch = X_shuffled[start:end]
+
+                X_hat = self.forward(batch)
+                grads_W, grads_b = self.backward(batch)
+                self.update_parameters(grads_W, grads_b)
+
+            # Learning rate scheduling
+            self.learning_rate = self.initial_lr / (1 + self.lr_decay * epoch)
+
+            if epoch % 10 == 0:
+                loss = self.compute_loss(X, self.forward(X))
+                print(f"Epoch {epoch}, Loss: {loss:.6f}")
+
+    def encode(self, X):
+        for i in range(len(self.weights) // 2):
+            X = self.act(np.dot(X, self.weights[i]) + self.biases[i])
+        return X
+
+    def reconstruct(self, X):
+        return self.forward(X)
+
+
 
 # %% [markdown]
 # # K-Means
