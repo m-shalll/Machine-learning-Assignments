@@ -8,7 +8,7 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.18.1
 #   kernelspec:
-#     display_name: Python 3 (ipykernel)
+#     display_name: .venv
 #     language: python
 #     name: python3
 # ---
@@ -570,6 +570,193 @@ class KMeans:
 
 # %% [markdown]
 # # GMM
+
+# %%
+class GMM:
+    def __init__(self, n_components, covariance_type='full', tol=1e-4, max_iter=100, reg_covar=1e-6):
+        self.n_components = n_components
+        self.covariance_type = covariance_type
+        self.tol = tol
+        self.max_iter = max_iter
+        self.reg_covar = reg_covar
+        
+        self.means_ = None
+        self.covariances_ = None
+        self.weights_ = None
+        self.log_likelihood_history_ = []
+        self.converged_ = False
+
+    def _initialize_parameters(self, X):
+        n_samples, n_features = X.shape
+        
+        # 1. Initialize means (choose random points from data)
+        indices = np.random.choice(n_samples, self.n_components, replace=False)
+        self.means_ = X[indices]
+        
+        # 2. Initialize weights (uniform)
+        self.weights_ = np.full(self.n_components, 1 / self.n_components)
+        
+        # 3. Initialize covariances based on type
+        if self.covariance_type == 'full':
+            self.covariances_ = np.array([np.eye(n_features) for _ in range(self.n_components)])
+        elif self.covariance_type == 'tied':
+            self.covariances_ = np.eye(n_features)
+        elif self.covariance_type == 'diagonal':
+            self.covariances_ = np.ones((self.n_components, n_features))
+        elif self.covariance_type == 'spherical':
+            self.covariances_ = np.ones(self.n_components)
+
+    def _compute_log_gaussian_prob(self, X, mean, cov):
+        n_samples, n_features = X.shape
+        
+        # Handle different covariance shapes
+        if self.covariance_type == 'full':
+            # shape of cov: (n_features, n_features)
+            # Log determinant
+            sign, log_det = np.linalg.slogdet(cov)
+            if sign != 1: # Numerical stability check
+                log_det = np.log(np.linalg.det(cov) + 1e-10) 
+            
+            # Mahalanobis distance
+            prec = np.linalg.inv(cov)
+            diff = X - mean
+            mahalanobis = np.sum(np.dot(diff, prec) * diff, axis=1)
+            
+            return -0.5 * (n_features * np.log(2 * np.pi) + log_det + mahalanobis)
+
+        elif self.covariance_type == 'tied':
+            # shape of cov: (n_features, n_features) (Shared)
+            sign, log_det = np.linalg.slogdet(cov)
+            prec = np.linalg.inv(cov)
+            diff = X - mean
+            mahalanobis = np.sum(np.dot(diff, prec) * diff, axis=1)
+            return -0.5 * (n_features * np.log(2 * np.pi) + log_det + mahalanobis)
+
+        elif self.covariance_type == 'diagonal':
+            # shape of cov: (n_features,)
+            # cov here is the diagonal elements (variance vector)
+            log_det = np.sum(np.log(cov))
+            prec = 1.0 / cov # Inverse of diagonal is just 1/element
+            diff = X - mean
+            mahalanobis = np.sum((diff ** 2) * prec, axis=1)
+            return -0.5 * (n_features * np.log(2 * np.pi) + log_det + mahalanobis)
+
+        elif self.covariance_type == 'spherical':
+            # shape of cov: scalar
+            log_det = n_features * np.log(cov)
+            prec = 1.0 / cov
+            diff = X - mean
+            mahalanobis = np.sum((diff ** 2) * prec, axis=1)
+            return -0.5 * (n_features * np.log(2 * np.pi) + log_det + mahalanobis)
+
+    def _e_step(self, X):
+        n_samples = X.shape[0]
+        log_resp = np.zeros((n_samples, self.n_components))
+        
+        for k in range(self.n_components):
+            if self.covariance_type == 'tied':
+                cov = self.covariances_
+            else:
+                cov = self.covariances_[k]
+            
+            log_gauss = self._compute_log_gaussian_prob(X, self.means_[k], cov)
+            log_resp[:, k] = np.log(self.weights_[k]) + log_gauss
+        
+        # Log-Sum-Exp for numerical stability 
+        # Calculate log(sum(exp(log_resp))) safely
+        log_prob_norm = np.logaddexp.reduce(log_resp, axis=1)
+        
+        # Normalize responsibilities (in log domain first, then exp)
+        # resp[i, k] = exp(log_resp[i, k] - log_prob_norm[i])
+        log_resp_norm = log_resp - log_prob_norm[:, np.newaxis]
+        resp = np.exp(log_resp_norm)
+        
+        return resp, np.mean(log_prob_norm) # Return avg log likelihood
+
+    def _m_step(self, X, resp):
+        n_samples, n_features = X.shape
+        
+        # 1. Update Weights (N_k / N)
+        # Sum of responsibilities for each cluster k
+        nk = resp.sum(axis=0) + 10 * np.finfo(resp.dtype).eps # Add eps to avoid div by zero
+        self.weights_ = nk / n_samples
+        
+        # 2. Update Means
+        # weighted sum of data / total weight
+        self.means_ = np.dot(resp.T, X) / nk[:, np.newaxis]
+        
+        # 3. Update Covariances
+        if self.covariance_type == 'full':
+            for k in range(self.n_components):
+                diff = X - self.means_[k]
+                # Weighted covariance: (diff.T * resp_k) @ diff / nk
+                cov_k = np.dot(resp[:, k] * diff.T, diff) / nk[k]
+                # Regularization for stability 
+                cov_k.flat[::n_features + 1] += self.reg_covar
+                self.covariances_[k] = cov_k
+
+        elif self.covariance_type == 'tied':
+            # Tied uses the same covariance for all clusters, averaged over all data
+            avg_cov = np.zeros((n_features, n_features))
+            for k in range(self.n_components):
+                diff = X - self.means_[k]
+                avg_cov += np.dot(resp[:, k] * diff.T, diff)
+            avg_cov /= n_samples # Divided by total N, not nk
+            avg_cov.flat[::n_features + 1] += self.reg_covar
+            self.covariances_ = avg_cov
+
+        elif self.covariance_type == 'diagonal':
+            # Only store the diagonal variance vector
+            avg_cov = np.zeros((self.n_components, n_features))
+            for k in range(self.n_components):
+                # Variance = sum(resp * (x-u)^2) / nk
+                diff_sq = (X - self.means_[k]) ** 2
+                avg_cov[k] = np.sum(resp[:, k][:, np.newaxis] * diff_sq, axis=0) / nk[k]
+                avg_cov[k] += self.reg_covar
+            self.covariances_ = avg_cov
+
+        elif self.covariance_type == 'spherical':
+            # Scalar variance: average variance across all dimensions
+            self.covariances_ = np.zeros(self.n_components)
+            for k in range(self.n_components):
+                diff_sq = (X - self.means_[k]) ** 2
+                # Mean of variance across features
+                var_k = np.sum(resp[:, k][:, np.newaxis] * diff_sq) / nk[k]
+                self.covariances_[k] = var_k / n_features # Average over features
+                self.covariances_[k] += self.reg_covar
+
+    def fit(self, X):
+        self._initialize_parameters(X)
+        self.log_likelihood_history_ = []
+        
+        for i in range(self.max_iter):
+            prev_log_likelihood = self.log_likelihood_history_[-1] if self.log_likelihood_history_ else -np.inf
+            
+            # E-Step
+            resp, current_log_likelihood = self._e_step(X)
+            self.log_likelihood_history_.append(current_log_likelihood)
+            
+            # M-Step
+            self._m_step(X, resp)
+            
+            # Convergence Check
+            change = abs(current_log_likelihood - prev_log_likelihood)
+            if i > 0 and change < self.tol:
+                self.converged_ = True
+                print(f"Converged at iteration {i} with log-likelihood {current_log_likelihood:.4f}")
+                break
+                
+        return self
+
+    def predict(self, X):
+        resp, _ = self._e_step(X)
+        return np.argmax(resp, axis=1)
+
+    def predict_proba(self, X):
+        resp, _ = self._e_step(X)
+        return resp
+
+# %%
 
 # %% [markdown]
 # # Experiments
