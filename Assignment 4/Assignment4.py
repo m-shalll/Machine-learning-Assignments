@@ -845,6 +845,7 @@ X = standardize(X)
 
 # %%
 def plot_elbow(results, init, k_values):
+    # extract the inertia of the best run for each k
     inertias = [
         results[init][k]["best_run"]["inertia"]
         for k in k_values
@@ -858,9 +859,10 @@ def plot_elbow(results, init, k_values):
     plt.show()
 
 
-
 # %%
 def plot_silhouette(results, init, k_values):
+    # extract the silhouette score of the best run for each k
+    # higher silhouette score is better
     silhouettes = [
         results[init][k]["best_run"]["silhouette"]
         for k in k_values
@@ -874,9 +876,9 @@ def plot_silhouette(results, init, k_values):
     plt.show()
 
 
-
 # %%
 def plot_convergence_speed(results, init, k_values):
+    # extract the number of iterations to converge for the best run for each k
     iterations = [
         results[init][k]["best_run"]["n_iter"]
         for k in k_values
@@ -890,9 +892,9 @@ def plot_convergence_speed(results, init, k_values):
     plt.show()
 
 
-
 # %%
 def plot_contingency_table(labels_true, labels_pred):
+    # compute contingency table where the rows are clusters and columns are true labels
     table = contingency_table(labels_true, labels_pred)
 
     plt.figure()
@@ -907,7 +909,6 @@ def plot_contingency_table(labels_true, labels_pred):
             plt.text(j, i, table[i, j], ha="center", va="center")
 
     plt.show()
-
 
 
 # %%
@@ -933,7 +934,6 @@ def plot_confusion_matrix(labels_true, labels_pred_mapped):
             plt.text(j, i, matrix[i, j], ha="center", va="center")
 
     plt.show()
-
 
 
 # %% [markdown]
