@@ -20,6 +20,7 @@
 import pandas as pd
 import numpy as np
 import time
+from sklearn.datasets import load_breast_cancer
 
 
 # %% [markdown]
@@ -809,6 +810,24 @@ class GMM:
 # # Experiments
 
 # %% [markdown]
+# ## Setup
+
+# %%
+def standardize(X):
+    mean = np.mean(X, axis=0)
+    std = np.std(X, axis=0) + 1e-8
+    return (X - mean) / std
+
+data = load_breast_cancer()
+X = data.data   # features
+y = data.target # labels
+feature_names = data.feature_names
+target_names = data.target_names
+
+X = standardize(X)
+
+
+# %% [markdown]
 # ## 1) K-Means on original data
 
 # %%
@@ -993,33 +1012,5 @@ def experiment_6_gmm_autoencoder(
             })
 
     return results
-
-
-
-# %% [markdown]
-# ## Run
-
-# %%
-def standardize(X):
-    mean = np.mean(X, axis=0)
-    std = np.std(X, axis=0) + 1e-8
-    return (X - mean) / std
-
-def load_breast_cancer_dataset(path):
-    df = pd.read_csv(path)
-
-    # Drop ID column
-    df = df.drop(columns=["id"])
-
-    # Extract labels (M = malignant, B = benign)
-    y = df["diagnosis"].map({"M": 1, "B": 0}).values
-
-    # Drop label column
-    X = df.drop(columns=["diagnosis"]).values
-
-    return X, y
-
-X, y = load_breast_cancer_dataset("data.csv")
-X = standardize(X)
 
 
