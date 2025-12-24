@@ -877,6 +877,40 @@ def plot_silhouette(results, init, k_values):
 
 
 # %%
+def plot_davies_bouldin(results, init, k_values):
+    # extract the davies-bouldin index of the best run for each k
+    # lower dbi is better
+    dbi_scores = [
+        results[init][k]["best_run"]["dbi"]
+        for k in k_values
+    ]
+
+    plt.figure()
+    plt.plot(list(k_values), dbi_scores, marker='o')
+    plt.xlabel("Number of clusters (k)")
+    plt.ylabel("Davies-Bouldin Index")
+    plt.title(f"Davies-Bouldin Index vs k ({init} initialization)")
+    plt.show()
+
+
+# %%
+def plot_calinski_harabasz(results, init, k_values):
+    # extract the calinski-harabasz index of the best run for each k
+    # higher chi is better
+    chi_scores = [
+        results[init][k]["best_run"]["chi"]
+        for k in k_values
+    ]
+
+    plt.figure()
+    plt.plot(list(k_values), chi_scores, marker='o')
+    plt.xlabel("Number of clusters (k)")
+    plt.ylabel("Calinski-Harabasz Index")
+    plt.title(f"Calinski-Harabasz Index vs k ({init} initialization)")
+    plt.show()
+
+
+# %%
 def plot_convergence_speed(results, init, k_values):
     # extract the number of iterations to converge for the best run for each k
     iterations = [
@@ -942,7 +976,7 @@ def plot_confusion_matrix(labels_true, labels_pred_mapped):
 # %%
 k_values = range(2, 11)
 k_inits = ["random", "kmeans++"]
-k_n_runs = 10
+k_n_runs = 10 # number of independent runs per (k, init) configuration
 k_random_seed_base = 42
 
 k_results = {}
@@ -995,6 +1029,8 @@ for init in k_inits:
 for init in k_inits:
     plot_elbow(k_results, init, k_values)
     plot_silhouette(k_results, init, k_values)
+    plot_davies_bouldin(k_results, init, k_values)
+    plot_calinski_harabasz(k_results, init, k_values)
     plot_convergence_speed(k_results, init, k_values)
 
 k_best_config = None
