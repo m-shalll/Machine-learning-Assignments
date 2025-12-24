@@ -342,6 +342,106 @@ def wcss(X, labels, centroids):
 # # External Metrics
 
 # %% [markdown]
+# First, we have to implement the contingency table
+
+# %%
+def contingency_table(labels_true, labels_pred):
+    labels_true = np.asarray(labels_true)
+    labels_pred = np.asarray(labels_pred)
+
+    clusters = np.unique(labels_pred)
+    classes = np.unique(labels_true)
+
+    table = np.zeros((clusters.size, classes.size), dtype=int)
+
+    for i, cluster in enumerate(clusters):
+        for j, cls in enumerate(classes):
+            table[i, j] = np.sum(
+                (labels_pred == cluster) & (labels_true == cls)
+            )
+
+    return table
+
+
+# %% [markdown]
+# ### Adjusted Rand Index
+
+# %%
+def nC2(n):
+    return n * (n - 1) / 2
+
+def adjusted_rand_index(labels_true, labels_pred):
+    table = contingency_table(labels_true, labels_pred)
+    n = np.sum(table)
+
+    sum_nij = np.sum(nC2(table))
+    sum_ai = np.sum(nC2(np.sum(table, axis=1)))
+    sum_bj = np.sum(nC2(np.sum(table, axis=0)))
+    total_pairs = nC2(n)
+
+    expected_index = (sum_ai * sum_bj) / total_pairs
+    max_index = 0.5 * (sum_ai + sum_bj)
+
+    return (sum_nij - expected_index) / (max_index - expected_index)
+
+
+# %% [markdown]
+# ### Normalized Mutual Information
+
+# %%
+def normalized_mutual_information(labels_true, labels_pred, eps=1e-10):
+    table = contingency_table(labels_true, labels_pred)
+    n = np.sum(table)
+
+    P_ij = table / n
+    P_i = np.sum(P_ij, axis=1)
+    P_j = np.sum(P_ij, axis=0)
+
+    MI = 0.0
+    for i in range(P_ij.shape[0]):
+        for j in range(P_ij.shape[1]):
+            if P_ij[i, j] > 0:
+                MI += P_ij[i, j] * np.log(P_ij[i, j] / (P_i[i] * P_j[j] + eps))
+
+    H_i = -np.sum(P_i * np.log(P_i + eps))
+    H_j = -np.sum(P_j * np.log(P_j + eps))
+
+    return MI / np.sqrt(H_i * H_j)
+
+
+# %% [markdown]
+# ### Purity
+
+# %%
+def purity_score(labels_true, labels_pred):
+    table = contingency_table(labels_true, labels_pred)
+    return np.sum(np.max(table, axis=1)) / np.sum(table)
+
+
+# %% [markdown]
+# ### Majority vote mapping for confusion matrix
+
+# %%
+def majority_vote_mapping(labels_true, labels_pred):
+    labels_true = np.asarray(labels_true)
+    labels_pred = np.asarray(labels_pred)
+
+    mapping = {}
+    mapped_predictions = np.zeros_like(labels_pred)
+
+    for cluster in np.unique(labels_pred):
+        true_labels_in_cluster = labels_true[labels_pred == cluster]
+
+        values, counts = np.unique(true_labels_in_cluster, return_counts=True)
+        majority_label = values[np.argmax(counts)]
+
+        mapping[cluster] = majority_label
+        mapped_predictions[labels_pred == cluster] = majority_label
+
+    return mapping, mapped_predictions
+
+
+# %% [markdown]
 # # K-Means
 
 # %% [markdown]
@@ -468,3 +568,6 @@ class KMeans:
 
 # %% [markdown]
 # # GMM
+
+# %% [markdown]
+# # Experiments
