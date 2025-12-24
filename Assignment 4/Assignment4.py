@@ -21,6 +21,7 @@ import pandas as pd
 import numpy as np
 import time
 from sklearn.datasets import load_breast_cancer
+import matplotlib.pyplot as plt
 
 
 # %% [markdown]
@@ -828,40 +829,183 @@ X = standardize(X)
 
 
 # %% [markdown]
+# ### Helper Functions
+
+# %%
+def plot_elbow(results, init, k_values):
+    inertias = [
+        results[init][k]["best_run"]["inertia"]
+        for k in k_values
+    ]
+
+    plt.figure()
+    plt.plot(list(k_values), inertias, marker='o')
+    plt.xlabel("Number of clusters (k)")
+    plt.ylabel("WCSS (Inertia)")
+    plt.title(f"Elbow Curve ({init} initialization)")
+    plt.show()
+
+
+
+# %%
+def plot_silhouette(results, init, k_values):
+    silhouettes = [
+        results[init][k]["best_run"]["silhouette"]
+        for k in k_values
+    ]
+
+    plt.figure()
+    plt.plot(list(k_values), silhouettes, marker='o')
+    plt.xlabel("Number of clusters (k)")
+    plt.ylabel("Silhouette Score")
+    plt.title(f"Silhouette Analysis ({init} initialization)")
+    plt.show()
+
+
+
+# %%
+def plot_convergence_speed(results, init, k_values):
+    iterations = [
+        results[init][k]["best_run"]["n_iter"]
+        for k in k_values
+    ]
+
+    plt.figure()
+    plt.plot(list(k_values), iterations, marker='o')
+    plt.xlabel("Number of clusters (k)")
+    plt.ylabel("Iterations to converge")
+    plt.title(f"Convergence Speed ({init} initialization)")
+    plt.show()
+
+
+
+# %%
+def plot_contingency_table(labels_true, labels_pred):
+    table = contingency_table(labels_true, labels_pred)
+
+    plt.figure()
+    plt.imshow(table)
+    plt.xlabel("True Label")
+    plt.ylabel("Cluster ID")
+    plt.title("Contingency Table (Cluster vs True Label)")
+    plt.colorbar()
+
+    for i in range(table.shape[0]):
+        for j in range(table.shape[1]):
+            plt.text(j, i, table[i, j], ha="center", va="center")
+
+    plt.show()
+
+
+
+# %%
+def plot_confusion_matrix(labels_true, labels_pred_mapped):
+    classes = np.unique(labels_true)
+    matrix = np.zeros((classes.size, classes.size), dtype=int)
+
+    for i, true_cls in enumerate(classes):
+        for j, pred_cls in enumerate(classes):
+            matrix[i, j] = np.sum(
+                (labels_true == true_cls) & (labels_pred_mapped == pred_cls)
+            )
+
+    plt.figure()
+    plt.imshow(matrix)
+    plt.xlabel("Predicted Label")
+    plt.ylabel("True Label")
+    plt.title("Confusion Matrix (Majority-Vote Mapping)")
+    plt.colorbar()
+
+    for i in range(matrix.shape[0]):
+        for j in range(matrix.shape[1]):
+            plt.text(j, i, matrix[i, j], ha="center", va="center")
+
+    plt.show()
+
+
+
+# %% [markdown]
 # ## 1) K-Means on original data
 
 # %%
-def experiment_1_kmeans_original(X, k_values):
-    results = []
+k_values = range(2, 11)
+k_inits = ["random", "kmeans++"]
+k_n_runs = 10
+k_random_seed_base = 42
 
+k_results = {}
+
+for init in k_inits:
+    k_results[init] = {}
     for k in k_values:
-        for init in ["random", "kmeans++"]:
-            start = time.time()
+        k_results[init][k] = {
+            "runs": [],
+            "best_run": None
+        }
 
-            km = KMeans(
+for init in k_inits:
+    for k in k_values:
+        best_silhouette = -np.inf
+        best_run = None
+
+        for run in range(k_n_runs):
+            k_m = KMeans(
                 n_clusters=k,
                 init=init,
                 max_iter=300,
                 tol=1e-4,
-                random_state=42
+                random_state=k_random_seed_base + run
             )
-            km.fit(X)
 
-            elapsed = time.time() - start
+            labels = k_m.fit_predict(X)
 
-            results.append({
-                "k": k,
-                "init": init,
-                "wcss": km.inertia_,
-                "silhouette": silhouette_score(X, km.labels_),
-                "dbi": davies_bouldin_index(X, km.labels_, km.centroids_),
-                "chi": calinski_harabasz_index(X, km.labels_, km.centroids_),
-                "iterations": km.n_iter_,
-                "time": elapsed
-            })
+            sil = silhouette_score(X, labels)
+            dbi = davies_bouldin_index(X, labels, k_m.centroids_)
+            chi = calinski_harabasz_index(X, labels, k_m.centroids_)
+            run_result = {
+                "labels": labels,
+                "centroids": k_m.centroids_,
+                "inertia": k_m.inertia_,
+                "silhouette": sil,
+                "dbi": dbi,
+                "chi": chi,
+                "n_iter": k_m.n_iter_
+            }
 
-    return results
+            k_results[init][k]["runs"].append(run_result)
 
+            if sil > best_silhouette:
+                best_silhouette = sil
+                best_run = run_result
+
+        k_results[init][k]["best_run"] = best_run
+
+for init in k_inits:
+    plot_elbow(k_results, init, k_values)
+    plot_silhouette(k_results, init, k_values)
+    plot_convergence_speed(k_results, init, k_values)
+
+k_best_config = None
+k_best_score = -np.inf
+
+for init in k_inits:
+    for k in k_values:
+        sil = k_results[init][k]["best_run"]["silhouette"]
+        if sil > k_best_score:
+            k_best_score = sil
+            k_best_config = (init, k)
+
+k_best_init, k_best_k = k_best_config
+k_best_run = k_results[k_best_init][k_best_k]["best_run"]
+
+plot_contingency_table(y, k_best_run["labels"])
+
+mapping, mapped_labels = majority_vote_mapping(
+    y,
+    k_best_run["labels"]
+)
+
+plot_confusion_matrix(y, mapped_labels)
 
 
 # %% [markdown]
