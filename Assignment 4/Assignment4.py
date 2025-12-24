@@ -454,41 +454,47 @@ def majority_vote_mapping(labels_true, labels_pred):
 # %%
 class KMeans:
     def __init__(self, n_clusters=2, init="kmeans++", max_iter=300, tol=1e-4, random_state=None):
-        self.n_clusters = n_clusters
-        self.init = init
-        self.max_iter = max_iter
-        self.tol = tol
-        self.random_state = random_state
+        self.n_clusters = n_clusters # number of clusters
+        self.init = init # initialization method: "random" or "kmeans++"
+        self.max_iter = max_iter # maximum number of iterations
+        self.tol = tol # convergence threshold on centroid movement
+        self.random_state = random_state # random seed
 
-        self.centroids_ = None
-        self.labels_ = None
-        self.inertia_ = None
-        self.inertia_history_ = []
-        self.n_iter_ = 0
-        self.converged_ = False
+        self.centroids_ = None # final centroids of clusters
+        self.labels_ = None # cluster assignments for each point
+        self.inertia_ = None # final within-cluster sum of squares
+        self.inertia_history_ = [] # history of inertia values
+        self.n_iter_ = 0 # number of iterations run
+        self.converged_ = False # whether convergence was achieved early
 
         if random_state is not None:
             np.random.seed(random_state)
 
-
     def _init_random(self, X):
         n_samples = X.shape[0]
+        # choose k distinct points
+        # replace = False --> ensure that no 2 start indices are the same
         indices = np.random.choice(n_samples, self.n_clusters, replace=False)
         return X[indices]
 
     def _init_kmeans_plus_plus(self, X):
+        # this algorithm improves convergence speed and stability
         n_samples, n_features = X.shape
         centroids = np.empty((self.n_clusters, n_features))
 
+        # pick the first sample randomly
         idx = np.random.randint(n_samples)
         centroids[0] = X[idx]
 
         for i in range(1, self.n_clusters):
+            # calculate squared distances from nearest existing centroid
             distances = np.min(
                 np.sum((X[:, np.newaxis, :] - centroids[:i]) ** 2, axis=2),
                 axis=1
             )
 
+            # compute probabilities proportional to squared distances
+            # this makes the further points more likely to be chosen
             probabilities = distances / np.sum(distances)
             cumulative_probs = np.cumsum(probabilities)
             r = np.random.rand()
@@ -506,14 +512,16 @@ class KMeans:
         else:
             raise ValueError("init must be 'random' or 'kmeans++'")
 
-
+    # Assign each point to the nearest centroid (E-step)
     def _assign_clusters(self, X, centroids):
+        # compute squared distances to centroids
         distances = np.sum(
             (X[:, np.newaxis, :] - centroids[np.newaxis, :, :]) ** 2,
             axis=2
         )
         return np.argmin(distances, axis=1)
 
+    # Update centroids based on current assignments (M-step)
     def _update_centroids(self, X, labels):
         n_features = X.shape[1]
         centroids = np.zeros((self.n_clusters, n_features))
@@ -521,14 +529,17 @@ class KMeans:
         for k in range(self.n_clusters):
             cluster_points = X[labels == k]
             if len(cluster_points) == 0:
+                # if a cluster has no points assigned, reinitialize its centroid randomly
                 centroids[k] = X[np.random.randint(X.shape[0])]
             else:
+                # calculate mean of assigned points
                 centroids[k] = np.mean(cluster_points, axis=0)
 
         return centroids
 
     def _compute_inertia(self, X, labels, centroids):
         inertia = 0.0
+        # add up squared distances of points to their assigned centroids
         for k in range(self.n_clusters):
             cluster_points = X[labels == k]
             inertia += np.sum((cluster_points - centroids[k]) ** 2)
@@ -541,9 +552,10 @@ class KMeans:
         centroids = self._initialize_centroids(X)
 
         for iteration in range(self.max_iter):
-            labels = self._assign_clusters(X, centroids)
-            new_centroids = self._update_centroids(X, labels)
+            labels = self._assign_clusters(X, centroids) # E-step
+            new_centroids = self._update_centroids(X, labels) # M-step
 
+            # calculate centroid movement for convergence check
             centroid_shift = np.linalg.norm(new_centroids - centroids)
             centroids = new_centroids
 
