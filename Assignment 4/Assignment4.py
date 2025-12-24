@@ -223,6 +223,125 @@ class Autoencoder:
 
 
 # %% [markdown]
+# # Internal Metrics
+
+# %% [markdown]
+# ### Silhouette Score
+
+# %%
+def silhouette_score(X, labels):
+    X = np.asarray(X)
+    labels = np.asarray(labels)
+
+    n_samples = X.shape[0]
+    unique_labels = np.unique(labels)
+
+    distances = np.linalg.norm(
+        X[:, np.newaxis, :] - X[np.newaxis, :, :],
+        axis=2
+    )
+
+    silhouette_values = np.zeros(n_samples)
+
+    for i in range(n_samples):
+        same_cluster = labels == labels[i]
+        other_clusters = unique_labels[unique_labels != labels[i]]
+
+        if np.sum(same_cluster) > 1:
+            a_i = np.mean(distances[i, same_cluster & (np.arange(n_samples) != i)])
+        else:
+            a_i = 0.0
+
+        b_i = np.inf
+        for cluster in other_clusters:
+            cluster_mask = labels == cluster
+            b_i = min(b_i, np.mean(distances[i, cluster_mask]))
+
+        silhouette_values[i] = (b_i - a_i) / max(a_i, b_i)
+
+    return np.mean(silhouette_values)
+
+
+# %% [markdown]
+# ### Davies-Bouldin Index
+
+# %%
+def davies_bouldin_index(X, labels, centroids):
+    X = np.asarray(X)
+    labels = np.asarray(labels)
+    centroids = np.asarray(centroids)
+
+    k = centroids.shape[0]
+
+    S = np.zeros(k)
+    for i in range(k):
+        cluster_points = X[labels == i]
+        S[i] = np.mean(np.linalg.norm(cluster_points - centroids[i], axis=1))
+
+    centroid_distances = np.linalg.norm(
+        centroids[:, np.newaxis, :] - centroids[np.newaxis, :, :],
+        axis=2
+    )
+
+    dbi = 0.0
+    for i in range(k):
+        R_ij = []
+        for j in range(k):
+            if i != j:
+                R_ij.append((S[i] + S[j]) / centroid_distances[i, j])
+        dbi += max(R_ij)
+
+    return dbi / k
+
+
+# %% [markdown]
+# ### Calinski–Harabasz Index
+
+# %%
+def calinski_harabasz_index(X, labels, centroids):
+    X = np.asarray(X)
+    labels = np.asarray(labels)
+    centroids = np.asarray(centroids)
+
+    n_samples = X.shape[0]
+    k = centroids.shape[0]
+
+    overall_mean = np.mean(X, axis=0)
+
+    W = 0.0
+    for i in range(k):
+        cluster_points = X[labels == i]
+        W += np.sum((cluster_points - centroids[i]) ** 2)
+
+    B = 0.0
+    for i in range(k):
+        n_i = np.sum(labels == i)
+        B += n_i * np.sum((centroids[i] - overall_mean) ** 2)
+
+    return (B / (k - 1)) / (W / (n_samples - k))
+
+
+# %% [markdown]
+# ### Within-cluster sum of squares (WCSS)
+
+# %%
+def wcss(X, labels, centroids):
+    X = np.asarray(X)
+    labels = np.asarray(labels)
+    centroids = np.asarray(centroids)
+
+    total = 0.0
+    for i in range(centroids.shape[0]):
+        cluster_points = X[labels == i]
+        total += np.sum((cluster_points - centroids[i]) ** 2)
+
+    return total
+
+
+# %% [markdown]
+# # External Metrics
+
+# %% [markdown]
 # # K-Means
 
 # %% [markdown]
@@ -349,9 +468,3 @@ class KMeans:
 
 # %% [markdown]
 # # GMM
-
-# %% [markdown]
-# # Internal Metrics
-
-# %% [markdown]
-# # External Metrics
