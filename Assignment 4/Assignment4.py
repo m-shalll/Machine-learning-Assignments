@@ -1046,6 +1046,10 @@ for init in k_inits:
 k_best_init, k_best_k = k_best_config
 k_best_run = k_results[k_best_init][k_best_k]["best_run"]
 
+print(adjusted_rand_index(y, k_best_run["labels"]))
+print(normalized_mutual_information(y, k_best_run["labels"]))
+print(purity_score(y, k_best_run["labels"]))
+
 plot_contingency_table(y, k_best_run["labels"])
 
 mapping, mapped_labels = majority_vote_mapping(
