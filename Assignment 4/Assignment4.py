@@ -8,7 +8,7 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.18.1
 #   kernelspec:
-#     display_name: base
+#     display_name: Python 3 (ipykernel)
 #     language: python
 #     name: python3
 # ---
@@ -18,6 +18,7 @@
 
 # %%
 import numpy as np
+import time
 
 
 # %% [markdown]
@@ -571,3 +572,190 @@ class KMeans:
 
 # %% [markdown]
 # # Experiments
+
+# %% [markdown]
+# ## 1) K-Means on original data
+
+# %%
+def experiment_1_kmeans_original(X, k_values):
+    results = []
+
+    for k in k_values:
+        for init in ["random", "kmeans++"]:
+            start = time.time()
+
+            km = KMeans(
+                n_clusters=k,
+                init=init,
+                max_iter=300,
+                tol=1e-4,
+                random_state=42
+            )
+            km.fit(X)
+
+            elapsed = time.time() - start
+
+            results.append({
+                "k": k,
+                "init": init,
+                "wcss": km.inertia_,
+                "silhouette": silhouette_score(X, km.labels_),
+                "dbi": davies_bouldin_index(X, km.labels_, km.centroids_),
+                "chi": calinski_harabasz_index(X, km.labels_, km.centroids_),
+                "iterations": km.n_iter_,
+                "time": elapsed
+            })
+
+    return results
+
+
+
+# %% [markdown]
+# ## 2) GMM on original data
+
+# %%
+def experiment_2_gmm_original(X, k_values, GMMClass):
+    results = []
+
+    for k in k_values:
+        for cov in ["full", "tied", "diag", "spherical"]:
+            gmm = GMMClass(
+                n_components=k,
+                covariance_type=cov,
+                max_iter=200,
+                tol=1e-4
+            )
+            gmm.fit(X)
+
+            results.append({
+                "components": k,
+                "covariance": cov,
+                "log_likelihood": gmm.log_likelihoods_[-1],
+                "bic": gmm.bic(X),
+                "aic": gmm.aic(X)
+            })
+
+    return results
+
+
+
+# %% [markdown]
+# ## 3) K-Means after PCA
+
+# %%
+def experiment_3_kmeans_pca(X, k, component_list, PCAClass):
+    results = []
+
+    for n_comp in component_list:
+        pca = PCAClass(n_components=n_comp)
+        pca.fit(X)
+        X_pca = pca.transform(X)
+
+        km = KMeans(n_clusters=k, init="kmeans++", random_state=42)
+        km.fit(X_pca)
+
+        results.append({
+            "components": n_comp,
+            "wcss": km.inertia_,
+            "silhouette": silhouette_score(X_pca, km.labels_),
+            "reconstruction_error": pca.reconstruction_error(X)
+        })
+
+    return results
+
+
+
+# %% [markdown]
+# ## 4) GMM after PCA
+
+# %%
+def experiment_4_gmm_pca(X, component_list, PCAClass, GMMClass):
+    results = []
+
+    for n_comp in component_list:
+        pca = PCAClass(n_components=n_comp)
+        pca.fit(X)
+        X_pca = pca.transform(X)
+
+        for cov in ["full", "tied", "diag", "spherical"]:
+            gmm = GMMClass(
+                n_components=2,
+                covariance_type=cov
+            )
+            gmm.fit(X_pca)
+
+            results.append({
+                "components": n_comp,
+                "covariance": cov,
+                "log_likelihood": gmm.log_likelihoods_[-1]
+            })
+
+    return results
+
+
+
+# %% [markdown]
+# ## 5) K-Means after Autoencoder
+
+# %%
+def experiment_5_kmeans_autoencoder(
+    X, k, bottlenecks, AutoencoderClass, ae_params
+):
+    results = []
+
+    for b in bottlenecks:
+        ae = AutoencoderClass(
+            layer_sizes=[X.shape[1], 64, 32, b, 32, 64, X.shape[1]],
+            **ae_params
+        )
+        ae.train(X)
+
+        X_latent = ae.encode(X)
+
+        km = KMeans(n_clusters=k, init="kmeans++", random_state=42)
+        km.fit(X_latent)
+
+        results.append({
+            "bottleneck": b,
+            "wcss": km.inertia_,
+            "silhouette": silhouette_score(X_latent, km.labels_),
+            "reconstruction_loss": ae.compute_loss(X, ae.reconstruct(X))
+        })
+
+    return results
+
+
+
+# %% [markdown]
+# ## 6) GMM after Autoencoder
+
+# %%
+def experiment_6_gmm_autoencoder(
+    X, bottlenecks, AutoencoderClass, GMMClass, ae_params
+):
+    results = []
+
+    for b in bottlenecks:
+        ae = AutoencoderClass(
+            layer_sizes=[X.shape[1], 64, 32, b, 32, 64, X.shape[1]],
+            **ae_params
+        )
+        ae.train(X)
+
+        X_latent = ae.encode(X)
+
+        for cov in ["full", "tied", "diag", "spherical"]:
+            gmm = GMMClass(
+                n_components=2,
+                covariance_type=cov
+            )
+            gmm.fit(X_latent)
+
+            results.append({
+                "bottleneck": b,
+                "covariance": cov,
+                "log_likelihood": gmm.log_likelihoods_[-1]
+            })
+
+    return results
+
