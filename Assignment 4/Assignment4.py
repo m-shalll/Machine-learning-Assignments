@@ -755,8 +755,55 @@ class GMM:
     def predict_proba(self, X):
         resp, _ = self._e_step(X)
         return resp
+    
+    def get_params_count(self, n_features):
+        # 1. Means (K * D)
+        n_mean_params = self.n_components * n_features
+        
+        # 2. Weights (K - 1)
+        n_weight_params = self.n_components - 1
+        
+        # 3. Covariances (Dependent on type)
+        if self.covariance_type == 'full':
+            # K * (D * (D + 1) / 2)
+            n_cov_params = self.n_components * n_features * (n_features + 1) // 2
+        elif self.covariance_type == 'tied':
+            # 1 * (D * (D + 1) / 2)
+            n_cov_params = n_features * (n_features + 1) // 2
+        elif self.covariance_type == 'diagonal':
+            # K * D
+            n_cov_params = self.n_components * n_features
+        elif self.covariance_type == 'spherical':
+            # K
+            n_cov_params = self.n_components
+            
+        return n_mean_params + n_weight_params + n_cov_params
 
-# %%
+    def bic(self, X):
+        # Bayesian Information Criterion
+        n_samples, n_features = X.shape
+        
+        # Get total log likelihood (sum, not mean)
+        resp, mean_log_likelihood = self._e_step(X)
+        total_log_likelihood = mean_log_likelihood * n_samples
+        
+        k = self.get_params_count(n_features)
+        
+        # Formula: k * ln(N) - 2 * log_like
+        return k * np.log(n_samples) - 2 * total_log_likelihood
+
+    def aic(self, X):
+        # Akaike Information Criterion
+        n_samples, n_features = X.shape
+        
+        # Get total log likelihood
+        resp, mean_log_likelihood = self._e_step(X)
+        total_log_likelihood = mean_log_likelihood * n_samples
+        
+        k = self.get_params_count(n_features)
+        
+        # Formula: 2 * k - 2 * log_like
+        return 2 * k - 2 * total_log_likelihood
 
 # %% [markdown]
 # # Experiments
