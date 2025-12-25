@@ -8,7 +8,7 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.18.1
 #   kernelspec:
-#     display_name: base
+#     display_name: .venv
 #     language: python
 #     name: python3
 # ---
@@ -197,8 +197,8 @@ class Autoencoder:
             self.biases[i] -= self.learning_rate * grads_b[i]   # update biases
 
     def train(self, X, epochs=100, batch_size=32):
-        n_samples = X.shape[0]
-        history  = []
+        n_samples = X.shape[0]  # number of training examples
+
         for epoch in range(epochs):
             indices = np.random.permutation(n_samples)  # shuffle data
             X_shuffled = X[indices]
@@ -213,14 +213,10 @@ class Autoencoder:
 
             # decay learning rate
             self.learning_rate = self.initial_lr / (1 + self.lr_decay * epoch)
-            current_loss = self.compute_loss(X, self.forward(X))
-            history.append(current_loss) # Add to list
 
             if epoch % 10 == 0:
                 loss = self.compute_loss(X, self.forward(X))  # compute full loss
                 print(f"Epoch {epoch}, Loss: {loss:.6f}")
-
-        return history
 
     def encode(self, X):
         # pass only through encoder layers (first half)
@@ -484,41 +480,47 @@ def majority_vote_mapping(labels_true, labels_pred):
 # %%
 class KMeans:
     def __init__(self, n_clusters=2, init="kmeans++", max_iter=300, tol=1e-4, random_state=None):
-        self.n_clusters = n_clusters
-        self.init = init
-        self.max_iter = max_iter
-        self.tol = tol
-        self.random_state = random_state
+        self.n_clusters = n_clusters # number of clusters
+        self.init = init # initialization method: "random" or "kmeans++"
+        self.max_iter = max_iter # maximum number of iterations
+        self.tol = tol # convergence threshold on centroid movement
+        self.random_state = random_state # random seed
 
-        self.centroids_ = None
-        self.labels_ = None
-        self.inertia_ = None
-        self.inertia_history_ = []
-        self.n_iter_ = 0
-        self.converged_ = False
+        self.centroids_ = None # final centroids of clusters
+        self.labels_ = None # cluster assignments for each point
+        self.inertia_ = None # final within-cluster sum of squares
+        self.inertia_history_ = [] # history of inertia values
+        self.n_iter_ = 0 # number of iterations run
+        self.converged_ = False # whether convergence was achieved early
 
         if random_state is not None:
             np.random.seed(random_state)
 
-
     def _init_random(self, X):
         n_samples = X.shape[0]
+        # choose k distinct points
+        # replace = False --> ensure that no 2 start indices are the same
         indices = np.random.choice(n_samples, self.n_clusters, replace=False)
         return X[indices]
 
     def _init_kmeans_plus_plus(self, X):
+        # this algorithm improves convergence speed and stability
         n_samples, n_features = X.shape
         centroids = np.empty((self.n_clusters, n_features))
 
+        # pick the first sample randomly
         idx = np.random.randint(n_samples)
         centroids[0] = X[idx]
 
         for i in range(1, self.n_clusters):
+            # calculate squared distances from nearest existing centroid
             distances = np.min(
                 np.sum((X[:, np.newaxis, :] - centroids[:i]) ** 2, axis=2),
                 axis=1
             )
 
+            # compute probabilities proportional to squared distances
+            # this makes the further points more likely to be chosen
             probabilities = distances / np.sum(distances)
             cumulative_probs = np.cumsum(probabilities)
             r = np.random.rand()
@@ -536,14 +538,16 @@ class KMeans:
         else:
             raise ValueError("init must be 'random' or 'kmeans++'")
 
-
+    # Assign each point to the nearest centroid (E-step)
     def _assign_clusters(self, X, centroids):
+        # compute squared distances to centroids
         distances = np.sum(
             (X[:, np.newaxis, :] - centroids[np.newaxis, :, :]) ** 2,
             axis=2
         )
         return np.argmin(distances, axis=1)
 
+    # Update centroids based on current assignments (M-step)
     def _update_centroids(self, X, labels):
         n_features = X.shape[1]
         centroids = np.zeros((self.n_clusters, n_features))
@@ -551,14 +555,17 @@ class KMeans:
         for k in range(self.n_clusters):
             cluster_points = X[labels == k]
             if len(cluster_points) == 0:
+                # if a cluster has no points assigned, reinitialize its centroid randomly
                 centroids[k] = X[np.random.randint(X.shape[0])]
             else:
+                # calculate mean of assigned points
                 centroids[k] = np.mean(cluster_points, axis=0)
 
         return centroids
 
     def _compute_inertia(self, X, labels, centroids):
         inertia = 0.0
+        # add up squared distances of points to their assigned centroids
         for k in range(self.n_clusters):
             cluster_points = X[labels == k]
             inertia += np.sum((cluster_points - centroids[k]) ** 2)
@@ -571,9 +578,10 @@ class KMeans:
         centroids = self._initialize_centroids(X)
 
         for iteration in range(self.max_iter):
-            labels = self._assign_clusters(X, centroids)
-            new_centroids = self._update_centroids(X, labels)
+            labels = self._assign_clusters(X, centroids) # E-step
+            new_centroids = self._update_centroids(X, labels) # M-step
 
+            # calculate centroid movement for convergence check
             centroid_shift = np.linalg.norm(new_centroids - centroids)
             centroids = new_centroids
 
@@ -716,7 +724,7 @@ class GMM:
         # 2. Update Means
         # weighted sum of data / total weight
         self.means_ = np.dot(resp.T, X) / nk[:, np.newaxis]
-
+        
         # 3. Update Covariances
         if self.covariance_type == 'full':
             for k in range(self.n_components):
@@ -733,7 +741,7 @@ class GMM:
             for k in range(self.n_components):
                 diff = X - self.means_[k]
                 avg_cov += np.dot(resp[:, k] * diff.T, diff)
-            avg_cov /= n_samples 
+            avg_cov /= n_samples # Divided by total N, not nk
             avg_cov.flat[::n_features + 1] += self.reg_covar
             self.covariances_ = avg_cov
 
@@ -800,7 +808,7 @@ class GMM:
             # K * (D * (D + 1) / 2)
             n_cov_params = self.n_components * n_features * (n_features + 1) // 2
         elif self.covariance_type == 'tied':
-            # (D * (D + 1) / 2)
+            # 1 * (D * (D + 1) / 2)
             n_cov_params = n_features * (n_features + 1) // 2
         elif self.covariance_type == 'diagonal':
             # K * D
@@ -817,7 +825,7 @@ class GMM:
         
         # Get total log likelihood (sum, not mean)
         resp, mean_log_likelihood = self._e_step(X)
-        total_log_likelihood = mean_log_likelihood  * n_samples
+        total_log_likelihood = mean_log_likelihood * n_samples
         
         k = self.get_params_count(n_features)
         
@@ -855,32 +863,7 @@ y = data.target # labels
 feature_names = data.feature_names
 target_names = data.target_names
 
-X_scaled = standardize(X)
-X = X_scaled
-
-def manual_train_test_split(X, y, test_ratio=0.2, seed=42):
-    # Set seed for reproducibility
-    np.random.seed(seed)
-    
-    # Get total number of samples
-    n_samples = X.shape[0]
-    
-    # Create a shuffled list of indices (0 to 568)
-    indices = np.random.permutation(n_samples)
-    test_size = int(n_samples * test_ratio)
-    
-    # Slice the indices
-    test_indices = indices[:test_size]
-    train_indices = indices[test_size:]
-    
-    # Select the actual data points using these indices
-    X_train, X_test = X[train_indices], X[test_indices]
-    y_train, y_test = y[train_indices], y[test_indices]
-    
-    return X_train, X_test, y_train, y_test
-
-# 5. Execute the split
-X_train, X_test, y_train, y_test = manual_train_test_split(X, y, test_ratio=0.2)
+X = standardize(X)
 
 
 # %% [markdown]
@@ -988,21 +971,6 @@ def plot_contingency_table(labels_true, labels_pred):
     plt.show()
 
 
-
-# %%
-def manual_mse(X_original, X_reconstructed):
-    # 1. Compute the difference
-    diff = X_original - X_reconstructed
-    
-    # 2. Square the differences
-    squared_diff = diff ** 2
-    
-    # 3. Compute the mean of all elements
-    mse_score = np.mean(squared_diff)
-    
-    return mse_score
-
-
 # %%
 def plot_confusion_matrix(labels_true, labels_pred_mapped):
     classes = np.unique(labels_true)
@@ -1026,6 +994,79 @@ def plot_confusion_matrix(labels_true, labels_pred_mapped):
             plt.text(j, i, matrix[i, j], ha="center", va="center")
 
     plt.show()
+
+
+# %%
+def compute_gap_statistic(X, k_values, n_refs=10, random_state=42):
+    # how much is the clustering structure better than random uniform distribution
+    np.random.seed(random_state)
+
+    n_samples, n_features = X.shape
+    mins = np.min(X, axis=0)
+    maxs = np.max(X, axis=0)
+
+    gaps = []
+    sk = []
+
+    for k in k_values:
+        km = KMeans(n_clusters=k, init="kmeans++", random_state=random_state)
+        km.fit(X)
+        Wk = km.inertia_
+
+        ref_inertias = []
+
+        # Generate 'n_refs' number of random datasets to create a baseline for comparison
+        for _ in range(n_refs):
+            # create a synthetic dataset of the same shape as X, distributed uniformly within the data's bounds
+            X_ref = np.random.uniform(mins, maxs, size=(n_samples, n_features))
+            km_ref = KMeans(n_clusters=k, init="kmeans++", random_state=random_state)
+            # fit the model to the synthetic/random data
+            km_ref.fit(X_ref)
+            # record the inertia of this random clustering
+            ref_inertias.append(km_ref.inertia_)
+
+        log_ref = np.log(ref_inertias)
+        gap = np.mean(log_ref) - np.log(Wk)
+        # calculate the standard error of the gap, accounting for the simulation noise (n_refs)
+        sdk = np.sqrt(1 + 1 / n_refs) * np.std(log_ref)
+
+        gaps.append(gap)
+        sk.append(sdk)
+
+    return np.array(gaps), np.array(sk)
+
+
+# %%
+def plot_gap_statistic(k_values, gaps, sk):
+    plt.figure()
+    plt.errorbar(k_values, gaps, yerr=sk, fmt='-o', capsize=5)
+    plt.xlabel("Number of clusters (k)")
+    plt.ylabel("Gap Statistic")
+    plt.title("Gap Statistic Analysis")
+    plt.show()
+
+
+
+# %%
+def find_elbow_k(k_values, wcss):
+    # to find elbow point, calculate perpendicular distance from each point to line connecting first and last point
+    # first point is (min_k, wcss_min), last point is (max_k, wcss_max)
+    # the point with the maximum distance is the elbow point
+    k_values = np.array(list(k_values))
+    wcss = np.array(wcss)
+
+    p1 = np.array([k_values[0], wcss[0]])
+    p2 = np.array([k_values[-1], wcss[-1]])
+
+    distances = []
+
+    for k, w in zip(k_values, wcss):
+        p = np.array([k, w])
+        dist = np.abs(np.cross(p2 - p1, p1 - p)) / np.linalg.norm(p2 - p1)
+        distances.append(dist)
+
+    elbow_index = np.argmax(distances)
+    return k_values[elbow_index]
 
 
 # %% [markdown]
@@ -1104,6 +1145,8 @@ for init in k_inits:
 k_best_init, k_best_k = k_best_config
 k_best_run = k_results[k_best_init][k_best_k]["best_run"]
 
+print(f"Best Configuration: init={k_best_init}, k={k_best_k}")
+
 print(f"ARI: {adjusted_rand_index(y, k_best_run['labels'])}")
 print(f"NMI: {normalized_mutual_information(y, k_best_run['labels'])}")
 print(f"Purity: {purity_score(y, k_best_run['labels'])}")
@@ -1117,158 +1160,55 @@ mapping, mapped_labels = majority_vote_mapping(
 
 plot_confusion_matrix(y, mapped_labels)
 
+gap_k_values = list(k_values)
+gaps, sk = compute_gap_statistic(X, gap_k_values, n_refs=10)
+
+plot_gap_statistic(gap_k_values, gaps, sk)
+
+optimal_k_gap = gap_k_values[-1]
+
+for i in range(len(gaps) - 1):
+    if gaps[i] >= gaps[i + 1] - sk[i + 1]:
+        optimal_k_gap = gap_k_values[i]
+        break
+
+print(f"Optimal k according to Gap Statistic: {optimal_k_gap}")
+
+for init in k_inits:
+    wcss = np.array([
+        k_results[init][k]["best_run"]["inertia"]
+        for k in k_values
+    ])
+    elbow_k = find_elbow_k(k_values, wcss)
+    print(f"Optimal k according to Elbow method ({init}): {elbow_k}")
+
+
 # %% [markdown]
 # ## 2) GMM on original data
 
 # %%
-import seaborn as sns
-from sklearn.metrics import confusion_matrix
-def run_experiment_2(X, y_true):
-    print("Starting Experiment 2: GMM")
-    
-    covariance_types = ['full', 'tied', 'diagonal', 'spherical']
-    k_range = range(2, 11) # Clusters 2 to 10
-    
+def experiment_2_gmm_original(X, k_values, GMMClass):
     results = []
 
-    best_bic = np.inf
-    best_model_labels = None
-    best_model_name = ""
-    
-    # Store BIC/AIC for plotting
-    bic_scores = {cov: [] for cov in covariance_types}
-    aic_scores = {cov: [] for cov in covariance_types}
-    
-    for cov_type in covariance_types:
-        print(f"\n--- Testing Covariance: {cov_type} ---")
-        
-        for k in k_range:
-            start_time = time.time()
-            # 1. Train Model
-            gmm = GMM(n_components=k, covariance_type=cov_type, max_iter=100, tol=1e-4)
+    for k in k_values:
+        for cov in ["full", "tied", "diag", "spherical"]:
+            gmm = GMMClass(
+                n_components=k,
+                covariance_type=cov,
+                max_iter=200,
+                tol=1e-4
+            )
             gmm.fit(X)
-            
-            end_time = time.time()
-            elapsed_time = end_time - start_time
-            # 2. Get Assignments
-            # E-step gives us responsibilities, we take argmax for hard labels
-            resp, _ = gmm._e_step(X)
-            labels_pred = np.argmax(resp, axis=1)
-            
-            # 3. Calculate Internal Metrics
-            bic = gmm.bic(X)
-            aic = gmm.aic(X)
-            sil = silhouette_score(X, labels_pred)
-            dbi = davies_bouldin_index(X, labels_pred, gmm.means_)
-            chi = calinski_harabasz_index(X, labels_pred, gmm.means_)
-            
-            # 4. Calculate External Metrics
-            ari = adjusted_rand_index(y_true, labels_pred)
-            nmi = normalized_mutual_information(y_true, labels_pred)
-            purity = purity_score(y_true, labels_pred)
-            
-            # Store for plotting
-            bic_scores[cov_type].append(bic)
-            aic_scores[cov_type].append(aic)
-            
-            # Record detailed stats
+
             results.append({
-                'Covariance': cov_type,
-                'K': k,
-                'BIC': bic,
-                'AIC': aic,
-                'Silhouette': sil,
-                'Davies-Bouldin': dbi,
-                'Calinski-Harabasz': chi,
-                'Purity': purity,
-                'ARI': ari,       
-                'NMI': nmi,       
-                'Converged': gmm.converged_,
-                'Time_Seconds': elapsed_time
+                "components": k,
+                "covariance": cov,
+                "log_likelihood": gmm.log_likelihoods_[-1],
+                "bic": gmm.bic(X),
+                "aic": gmm.aic(X)
             })
 
-            # Save best model for Confusion Matrix
-            if bic < best_bic:
-                best_bic = bic
-                best_model_labels = labels_pred
-                best_model_name = f"{cov_type} (K={k})"
-            
-            print(f"K={k}: BIC={bic:.0f}, AIC={aic:.0f}, Sil={sil:.3f}")
-
-    # --- Create Comparison Tables ---
-    df_results = pd.DataFrame(results)
-    print("\nExperiment 2 Summary Table:")
-    print(df_results.sort_values(by='BIC').head(10)) # Show top 10 best models
-    
-    # --- Visualizations ---
-    plot_bic_aic(k_range, bic_scores, aic_scores)
-
-    plot_heatmap(df_results)
-    
-    plot_confusion_matrix_manual(y_true, best_model_labels, best_model_name)
-    
-    return df_results
-
-def plot_bic_aic(k_range, bic_scores, aic_scores):
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
-    
-    # Plot BIC
-    for cov_type, scores in bic_scores.items():
-        ax1.plot(k_range, scores, marker='o', label=f'{cov_type}')
-    ax1.set_title('BIC Score vs. Number of Components')
-    ax1.set_xlabel('Number of Components (k)')
-    ax1.set_ylabel('BIC Score (Lower is Better)')
-    ax1.legend()
-    ax1.grid(True)
-    
-    # Plot AIC
-    for cov_type, scores in aic_scores.items():
-        ax2.plot(k_range, scores, marker='o', linestyle='--', label=f'{cov_type}')
-    ax2.set_title('AIC Score vs. Number of Components')
-    ax2.set_xlabel('Number of Components (k)')
-    ax2.set_ylabel('AIC Score (Lower is Better)')
-    ax2.legend()
-    ax2.grid(True)
-    
-    plt.tight_layout()
-    plt.show()
-
-
-def plot_heatmap(df_results):
-    # 1. Group by Covariance Type and take the mean of metrics
-    metrics = ['BIC', 'AIC', 'Silhouette', 'Davies-Bouldin', 'Calinski-Harabasz', 'Purity', 'Time_Seconds', 'ARI', 'NMI']
-    grouped = df_results.groupby('Covariance')[metrics].mean()
-    
-    # 2. Normalize data for heatmap (min-max scaling) so colors make sense
-    # (Since BIC is ~20,000 and Purity is ~0.9, we must scale them)
-    normalized = (grouped - grouped.min()) / (grouped.max() - grouped.min())
-    
-    plt.figure(figsize=(10, 6))
-    sns.heatmap(normalized, annot=grouped.round(2), cmap='viridis', fmt='g')
-    plt.title('Average Performance Heatmap (Normalized Colors, Raw Values)')
-    plt.show()
-
-def plot_confusion_matrix_manual(y_true, y_pred, title):
-    """
-    Plots the confusion matrix for the best model using majority vote mapping.
-    """
-    # 1. Remap the cluster labels to true class labels using your function
-    _, y_pred_mapped = majority_vote_mapping(y_true, y_pred)
-    
-    # 2. Calculate confusion matrix using the MAPPED predictions
-    cm = confusion_matrix(y_true, y_pred_mapped)
-    
-    # 3. Plotting
-    plt.figure(figsize=(8, 6))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', cbar=False)
-    
-    plt.xlabel('Predicted Class (Mapped via Majority Vote)')
-    plt.ylabel('True Class')
-    plt.title(f'Confusion Matrix: {title}')
-    plt.tight_layout()
-    plt.show()
-
-results = run_experiment_2(X_train, y_train)
+    return results
 
 
 
@@ -1394,183 +1334,29 @@ plot_confusion_matrix(y, mapped_labels)
 # ## 4) GMM after PCA
 
 # %%
-def run_experiment_4(X, y):
-    # 1. Setup
-    pca_variations = [2, 5, 10, 15, 20]
-    covariance_types = ['full', 'tied', 'diagonal', 'spherical']
-    n_classes = len(np.unique(y))
-    
+def experiment_4_gmm_pca(X, component_list, PCAClass, GMMClass):
     results = []
-    best_model_info = {'score': -1, 'model': None, 'pca': None, 'X_reduced': None, 'y_pred': None}
-    
-    print(f"Starting Experiment 4: GMM (k={n_classes}) after PCA...")
-    print("-" * 80)
-    print(f"{'Dim':<5} | {'Covariance':<10} | {'Sil':<6} | {'ARI':<6} | {'Purity':<6} | {'BIC':<10} | {'Time (s)':<8}")
-    print("-" * 80)
-    
-    for n_dim in pca_variations:
-        # Check if n_dim is valid for dataset
-        if n_dim > X.shape[1]:
-            continue
-            
-        # --- A. Dimensionality Reduction (PCA) ---
-        pca = PCA(n_components=n_dim, random_state=42)
-        start_pca = time.time()
-        X_pca = pca.fit_transform(X)
-        pca_time = time.time() - start_pca
-        
-        # PCA Reconstruction Error (MSE)
-        X_reconstructed = pca.inverse_transform(X_pca)
-        reconstruction_error = manual_mse(X, X_reconstructed)
-        explained_variance = np.sum(pca.explained_variance_ratio_)
 
-        # --- B. GMM Grid Search ---
-        for cov_type in covariance_types:
-            start_gmm = time.time()
-            
-            # Fit GMM
-            gmm = GMM(n_components=n_classes, covariance_type=cov_type, random_state=42, max_iter=200)
+    for n_comp in component_list:
+        pca = PCAClass(n_components=n_comp)
+        pca.fit(X)
+        X_pca = pca.transform(X)
+
+        for cov in ["full", "tied", "diag", "spherical"]:
+            gmm = GMMClass(
+                n_components=2,
+                covariance_type=cov
+            )
             gmm.fit(X_pca)
-            y_pred = gmm.predict(X_pca)
-            
-            gmm_time = time.time() - start_gmm
-            total_time = pca_time + gmm_time
 
-            # --- C. Compute Metrics ---
-            
-            # 1. Internal Validation
-            sil = silhouette_score(X_pca, y_pred)
-            db = davies_bouldin_index(X_pca, y_pred, gmm.means_)
-            ch = calinski_harabasz_index(X_pca, y_pred, gmm.means_)
-            wcss_ = wcss(X_pca, gmm, gmm.means_)
-            bic = gmm.bic(X_pca)
-            aic = gmm.aic(X_pca)
-            log_likelihood = gmm.score(X_pca) * len(X) # score returns avg log-likelihood
+            results.append({
+                "components": n_comp,
+                "covariance": cov,
+                "log_likelihood": gmm.log_likelihoods_[-1]
+            })
 
-            # 2. External Validation
-            ari = adjusted_rand_index(y, y_pred)
-            nmi = normalized_mutual_information(y, y_pred)
-            purity = purity_score(y, y_pred)
+    return results
 
-            # Store Results
-            entry = {
-                'Experiment': 'Exp 4 (PCA+GMM)',
-                'Dimensions': n_dim,
-                'Covariance_Type': cov_type,
-                'Silhouette': sil,
-                'Davies_Bouldin': db,
-                'Calinski_Harabasz': ch,
-                'WCSS': wcss_,
-                'BIC': bic,
-                'AIC': aic,
-                'Log_Likelihood': log_likelihood,
-                'ARI': ari,
-                'NMI': nmi,
-                'Purity': purity,
-                'MSE_Reconstruction': reconstruction_error,
-                'Explained_Variance': explained_variance,
-                'Time_Sec': total_time
-            }
-            results.append(entry)
-            
-            # Print progress
-            print(f"{n_dim:<5} | {cov_type:<10} | {sil:.4f} | {ari:.4f} | {purity:.4f} | {bic:.1f}      | {total_time:.4f}")
-
-            # Keep track of best model (based on Silhouette for internal or ARI for external)
-            # Here choosing ARI as tie-breaker for "best" visualization
-            if ari > best_model_info['score']:
-                best_model_info = {
-                    'score': ari,
-                    'model': gmm,
-                    'pca': pca,
-                    'X_reduced': X_pca,
-                    'y_pred': y_pred,
-                    'dims': n_dim,
-                    'cov': cov_type
-                }
-
-    # 3. Convert to DataFrame
-    df_results = pd.DataFrame(results)
-    
-    # 4. Generate Visualizations
-    generate_visualizations(df_results, best_model_info, X, y, n_classes)
-    
-    return df_results
-
-# --- Visualization Logic ---
-def generate_visualizations(df, best_info, X, y_true, n_classes):
-    plt.style.use('seaborn-v0_8')
-    
-    # 1. 2D Projection of Best Result
-    # If best result has > 2 dims, we view the first 2 PCs
-    X_vis = best_info['X_reduced'][:, :2]
-    
-    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
-    
-    # True Labels
-    sns.scatterplot(x=X_vis[:,0], y=X_vis[:,1], hue=y_true, palette='viridis', ax=axes[0], s=50)
-    axes[0].set_title(f"Ground Truth (PCA First 2 Comps)")
-    
-    # Cluster Predictions
-    sns.scatterplot(x=X_vis[:,0], y=X_vis[:,1], hue=best_info['y_pred'], palette='tab10', ax=axes[1], s=50)
-    axes[1].set_title(f"GMM Clustering: PCA={best_info['dims']}, Cov={best_info['cov']}")
-    plt.tight_layout()
-    plt.show()
-
-    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
-    
-    sns.lineplot(data=df, x='Dimensions', y='BIC', hue='Covariance_Type', marker='o', ax=axes[0])
-    axes[0].set_title('BIC Score vs Dimensions (Lower is Better)')
-    
-    sns.lineplot(data=df, x='Dimensions', y='Silhouette', hue='Covariance_Type', marker='o', ax=axes[1])
-    axes[1].set_title('Silhouette Score vs Dimensions (Higher is Better)')
-    plt.show()
-
-    # 3. Confusion Matrix for Best Method
-    cm = confusion_matrix(y_true, best_info['y_pred'])
-    plt.figure(figsize=(8, 6))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
-    plt.title(f'Confusion Matrix: Best GMM (Dim={best_info["dims"]}, {best_info["cov"]})')
-    plt.xlabel('Predicted Cluster')
-    plt.ylabel('True Class')
-    plt.show()
-
-    # 4. Dimensionality Impact on Optimal Covariance (Heatmap of ARI)
-    pivot_ari = df.pivot(index='Covariance_Type', columns='Dimensions', values='ARI')
-    plt.figure(figsize=(10, 5))
-    sns.heatmap(pivot_ari, annot=True, cmap='RdYlGn', fmt='.3f')
-    plt.title('Impact of Dimensionality on Performance (ARI Score)')
-    plt.show()
-
-    # 5. BIC/AIC Curve for GMM Component Selection (Elbow Method)
-    # This is a separate mini-check: Using the BEST dimension found, vary K from 2 to 20
-    print("\nGenerating BIC/AIC Elbow Curves for optimal dimensions...")
-    best_dim = best_info['dims']
-    pca_elbow = PCA(n_components=best_dim)
-    X_elbow = pca_elbow.fit_transform(X)
-    
-    n_components_range = range(1, 15) # Adjust range as needed
-    bics = []
-    aics = []
-    
-    for n in n_components_range:
-        # Use 'full' covariance for standard elbow check
-        gmm = GMM(n_components=n, covariance_type='full')
-        gmm.fit(X_elbow)
-        bics.append(gmm.bic(X_elbow))
-        aics.append(gmm.aic(X_elbow))
-        
-    plt.figure(figsize=(10, 6))
-    plt.plot(n_components_range, bics, label='BIC', marker='o')
-    plt.plot(n_components_range, aics, label='AIC', marker='x')
-    plt.axvline(x=n_classes, color='r', linestyle='--', label='True K')
-    plt.legend()
-    plt.title(f'BIC/AIC vs Number of Components (Fixed at Dim={best_dim})')
-    plt.xlabel('Number of Components')
-    plt.ylabel('Score')
-    plt.show()
-
-results = run_experiment_2(X_train, y_train)
 
 
 # %% [markdown]
@@ -1740,189 +1526,33 @@ plot_confusion_matrix(y, mapped_labels)
 # ## 6) GMM after Autoencoder
 
 # %%
-dims = [2, 5, 10, 15, 20]
-results = []
-history_dict = {} # To store loss curves
+def experiment_6_gmm_autoencoder(
+    X, bottlenecks, AutoencoderClass, GMMClass, ae_params
+):
+    results = []
 
-print("\n--- Starting Experiment 6: GMM with AE vs PCA ---")
+    for b in bottlenecks:
+        ae = AutoencoderClass(
+            layer_sizes=[X.shape[1], 64, 32, b, 32, 64, X.shape[1]],
+            **ae_params
+        )
+        ae.train(X)
 
-for dim in dims:
-    print(f"\nProcessing Dimension: {dim}")
-    
-    start_time = time.time()
-    pca = PCA(n_components=dim)
-    pca.fit(X)            
-    X_pca = pca.transform(X)
-    X_pca_recon = pca.inverse_transform(X_pca)
-    
-    # GMM on PCA
-    gmm_pca = GMM(n_components=2, covariance_type='full')
+        X_latent = ae.encode(X)
 
-    gmm_pca.fit(X_pca)
-    gmm_pca_labels = gmm_pca.predict(X_pca)
-    
-    pca_time = time.time() - start_time
-    
-    # Metrics for PCA
-    rec_error_pca = pca.reconstruction_error(X)
-    resp, likelihoods = gmm_pca._e_step(X_pca)
-    log_likelihood = likelihoods * len(X_pca)
-    # Store PCA Results
-    results.append({
-        'Method': 'PCA-GMM',
-        'Dim': dim,
-        'Silhouette': silhouette_score(X_pca, gmm_pca_labels),
-        'Davies-Bouldin': davies_bouldin_index(X_pca, gmm_pca_labels, gmm_pca.means_),
-        'Calinski-Harabasz': calinski_harabasz_index(X_pca, gmm_pca_labels, gmm_pca.means_),
-        'WCSS': wcss(X_pca, gmm_pca_labels, gmm_pca.means_),
-        'BIC': gmm_pca.bic(X_pca),
-        'AIC': gmm_pca.aic(X_pca),
-        'Log-Likelihood': log_likelihood,
-        'ARI': adjusted_rand_index(y, gmm_pca_labels),
-        'NMI': normalized_mutual_information(y, gmm_pca_labels),
-        'Purity': purity_score(y, gmm_pca_labels),
-        'Reconstruction_MSE': rec_error_pca,
-        'Time': pca_time
-    })
+        for cov in ["full", "tied", "diag", "spherical"]:
+            gmm = GMMClass(
+                n_components=2,
+                covariance_type=cov
+            )
+            gmm.fit(X_latent)
 
-    # ---------------------------
-    # B. Autoencoder + GMM (Experiment 6)
-    # ---------------------------
-    start_time = time.time()
-    input_dim = X_scaled.shape[1]
-    
-    # Define Architecture: [Input -> 64 -> 32 -> Bottleneck -> 32 -> 64 -> Output]
-    layer_sizes = [input_dim, 64, 32, dim, 32, 64, input_dim]
-    
-    ae = Autoencoder(layer_sizes=layer_sizes, activation="sigmoid", learning_rate=0.001)
-    
-    # Train
-    loss_history = ae.train(X_scaled, epochs=50, batch_size=128)
-    history_dict[dim] = loss_history
-    
-    # Compress & Reconstruct
-    X_ae = ae.encode(X_scaled)
-    X_ae_recon = ae.reconstruct(X_scaled)
-    
-    # GMM on AE Latent Space
-    gmm_ae = GMM(n_components=2, covariance_type='full')
-    gmm_ae.fit(X_ae)
-    gmm_ae_labels = gmm_ae.predict(X_ae)
-    ae_time = time.time() - start_time
-    
-    results.append({
-        'Method': 'AE-GMM',
-        'Dim': dim,
-        'Silhouette': silhouette_score(X_ae, gmm_ae_labels),
-        'Davies-Bouldin': davies_bouldin_index(X_ae, gmm_ae_labels, gmm_ae.means_),
-        'Calinski-Harabasz': calinski_harabasz_index(X_ae, gmm_ae_labels, gmm_ae.means_),
-        'BIC': gmm_ae.bic(X_ae),
-        'ARI': adjusted_rand_index(y, gmm_ae_labels),
-        'NMI': normalized_mutual_information(y, gmm_ae_labels),
-        'Purity': purity_score(y, gmm_ae_labels),
-        'Reconstruction_MSE': manual_mse(X_scaled, X_ae_recon),
-        'Time': ae_time
-    })
+            results.append({
+                "bottleneck": b,
+                "covariance": cov,
+                "log_likelihood": gmm.log_likelihoods_[-1]
+            })
 
-# Convert results to DataFrame
-df_res = pd.DataFrame(results)
-
-# ==========================================
-# 4. VISUALIZATION & ANALYSIS
-# ==========================================
-
-# A. Comparison Heatmap
-plt.figure(figsize=(14, 8))
-# Pivot for heatmap: Index=Dim, Columns=Metric, Split by Method
-# We will just normalize metrics to 0-1 for heatmap visualization
-numeric_cols = df_res.columns.drop(['Method', 'Dim'])
-df_norm = df_res.copy()
-for col in numeric_cols:
-    df_norm[col] = (df_res[col] - df_res[col].min()) / (df_res[col].max() - df_res[col].min())
-
-# Create a pivot table for the heatmap (Method+Dim vs Metrics)
-pivot_heatmap = df_norm.set_index(['Method', 'Dim'])[numeric_cols]
-sns.heatmap(pivot_heatmap, cmap='viridis', annot=False)
-plt.title("Heatmap of Normalized Metrics (AE-GMM vs PCA-GMM)")
-plt.tight_layout()
-plt.show()
-
-# B. Internal Validation Metrics Comparison
-fig, axes = plt.subplots(1, 3, figsize=(18, 5))
-metrics_to_plot = ['Silhouette', 'Davies-Bouldin', 'Calinski-Harabasz']
-
-for i, metric in enumerate(metrics_to_plot):
-    sns.lineplot(data=df_res, x='Dim', y=metric, hue='Method', marker='o', ax=axes[i])
-    axes[i].set_title(f'{metric} vs Dimensions')
-    axes[i].grid(True)
-plt.show()
-
-# C. External Validation Metrics Comparison
-fig, axes = plt.subplots(1, 3, figsize=(18, 5))
-metrics_to_plot = ['ARI', 'NMI', 'Purity']
-
-for i, metric in enumerate(metrics_to_plot):
-    sns.lineplot(data=df_res, x='Dim', y=metric, hue='Method', marker='o', ax=axes[i])
-    axes[i].set_title(f'{metric} vs Dimensions')
-    axes[i].grid(True)
-plt.show()
-
-# D. Reconstruction Error Comparison
-plt.figure(figsize=(8, 5))
-sns.barplot(data=df_res, x='Dim', y='Reconstruction_MSE', hue='Method')
-plt.title("Reconstruction Error (MSE): AE vs PCA")
-plt.ylabel("MSE (Lower is better)")
-plt.show()
-
-# E. AE Training Loss Curves
-plt.figure(figsize=(10, 6))
-for dim, losses in history_dict.items():
-    plt.plot(losses, label=f'Bottleneck Dim {dim}')
-plt.title("Autoencoder Training Loss per Epoch")
-plt.xlabel("Epochs")
-plt.ylabel("Loss (MSE)")
-plt.legend()
-plt.grid(True)
-plt.show()
-
-# F. 2D Projections
-fig, axes = plt.subplots(1, 2, figsize=(16, 6))
-
-# 1. PCA Plot (Left)
-# ------------------
-pca_viz = PCA(n_components=2)
-pca_viz.fit(X_scaled)
-pca_2d = pca_viz.transform(X_scaled)
-
-sns.scatterplot(
-    x=pca_2d[:,0], y=pca_2d[:,1], 
-    hue=y, palette='viridis', alpha=0.5, ax=axes[0]
-)
-axes[0].set_title("PCA 2D Projection")
-
-# 2. Autoencoder Plot (Right) - THIS WAS MISSING
-# ---------------------------
-# Note: Ideally we retrain a dim=2 AE here, but slicing the 
-# current high-dim model is acceptable for a quick check.
-X_latent = ae.encode(X_scaled) 
-ae_2d = X_latent[:, :2]
-
-sns.scatterplot(
-    x=ae_2d[:,0], y=ae_2d[:,1], 
-    hue=y, palette='viridis', alpha=0.5, ax=axes[1]
-)
-axes[1].set_title("Autoencoder Latent Projection (First 2 Dims)")
-
-plt.show()
-
-# ==========================================
-# 5. SUMMARY TABLES
-# ==========================================
-print("\n--- Summary Table (Averages) ---")
-print(df_res.groupby('Method')[['Silhouette', 'ARI', 'Reconstruction_MSE', 'Time']].mean())
-
-print("\n--- Best Configuration by ARI ---")
-best_row = df_res.loc[df_res['ARI'].idxmax()]
-print(best_row)
+    return results
 
 
