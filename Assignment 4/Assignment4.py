@@ -1589,7 +1589,7 @@ ae_batch_size = 32
 ae_learning_rate = 0.01
 ae_l2_lambda = 0.0
 ae_lr_decay = 0.0
-ae_activation = "relu"
+ae_activation = "sigmoid"
 
 ae_k_results = {}
 
