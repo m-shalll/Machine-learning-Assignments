@@ -1336,27 +1336,176 @@ plot_confusion_matrix(y, mapped_labels)
 # %%
 def experiment_4_gmm_pca(X, component_list, PCAClass, GMMClass):
     results = []
+    best_model_info = {'score': -1, 'model': None, 'pca': None, 'X_reduced': None, 'y_pred': None}
+    
+    print(f"Starting Experiment 4: GMM (k={n_classes}) after PCA...")
+    print("-" * 80)
+    print(f"{'Dim':<5} | {'Covariance':<10} | {'Sil':<6} | {'ARI':<6} | {'Purity':<6} | {'BIC':<10} | {'Time (s)':<8}")
+    print("-" * 80)
+    
+    for n_dim in pca_variations:
+        # Check if n_dim is valid for dataset
+        if n_dim > X.shape[1]:
+            continue
+            
+        # Dimensionality Reduction (PCA) 
+        pca = PCA(n_components=n_dim, random_state=42)
+        start_pca = time.time()
+        X_pca = pca.fit_transform(X)
+        pca_time = time.time() - start_pca
+        
+        # PCA Reconstruction Error (MSE)
+        X_reconstructed = pca.inverse_transform(X_pca)
+        reconstruction_error = manual_mse(X, X_reconstructed)
+        explained_variance = np.sum(pca.explained_variance_ratio_)
 
-    for n_comp in component_list:
-        pca = PCAClass(n_components=n_comp)
-        pca.fit(X)
-        X_pca = pca.transform(X)
-
-        for cov in ["full", "tied", "diag", "spherical"]:
-            gmm = GMMClass(
-                n_components=2,
-                covariance_type=cov
-            )
+        # GMM Grid Search 
+        for cov_type in covariance_types:
+            start_gmm = time.time()
+            
+            # Fit GMM
+            gmm = GMM(n_components=n_classes, covariance_type=cov_type, random_state=42, max_iter=200)
             gmm.fit(X_pca)
+            y_pred = gmm.predict(X_pca)
+            
+            gmm_time = time.time() - start_gmm
+            total_time = pca_time + gmm_time
 
-            results.append({
-                "components": n_comp,
-                "covariance": cov,
-                "log_likelihood": gmm.log_likelihoods_[-1]
-            })
+            # Compute Metrics 
+            
+            # 1. Internal Validation
+            sil = silhouette_score(X_pca, y_pred)
+            db = davies_bouldin_index(X_pca, y_pred, gmm.means_)
+            ch = calinski_harabasz_index(X_pca, y_pred, gmm.means_)
+            wcss_ = wcss(X_pca, gmm, gmm.means_)
+            bic = gmm.bic(X_pca)
+            aic = gmm.aic(X_pca)
+            log_likelihood = gmm.score(X_pca) * len(X) # score returns avg log-likelihood
 
-    return results
+            # 2. External Validation
+            ari = adjusted_rand_index(y, y_pred)
+            nmi = normalized_mutual_information(y, y_pred)
+            purity = purity_score(y, y_pred)
 
+            # Store Results
+            entry = {
+                'Experiment': 'Exp 4 (PCA+GMM)',
+                'Dimensions': n_dim,
+                'Covariance_Type': cov_type,
+                'Silhouette': sil,
+                'Davies_Bouldin': db,
+                'Calinski_Harabasz': ch,
+                'WCSS': wcss_,
+                'BIC': bic,
+                'AIC': aic,
+                'Log_Likelihood': log_likelihood,
+                'ARI': ari,
+                'NMI': nmi,
+                'Purity': purity,
+                'MSE_Reconstruction': reconstruction_error,
+                'Explained_Variance': explained_variance,
+                'Time_Sec': total_time
+            }
+            results.append(entry)
+            
+            # Print progress
+            print(f"{n_dim:<5} | {cov_type:<10} | {sil:.4f} | {ari:.4f} | {purity:.4f} | {bic:.1f}      | {total_time:.4f}")
+
+            # Keep track of best model (based on Silhouette for internal or ARI for external)
+            # Here choosing ARI as tie-breaker for "best" visualization
+            if ari > best_model_info['score']:
+                best_model_info = {
+                    'score': ari,
+                    'model': gmm,
+                    'pca': pca,
+                    'X_reduced': X_pca,
+                    'y_pred': y_pred,
+                    'dims': n_dim,
+                    'cov': cov_type
+                }
+
+    # 3. Convert to DataFrame
+    df_results = pd.DataFrame(results)
+    
+    # 4. Generate Visualizations
+    generate_visualizations(df_results, best_model_info, X, y, n_classes)
+    
+    return df_results
+
+# Visualization Logic 
+def generate_visualizations(df, best_info, X, y_true, n_classes):
+    plt.style.use('seaborn-v0_8')
+    
+    # 1. 2D Projection of Best Result
+    # If best result has > 2 dims, we view the first 2 PCs
+    X_vis = best_info['X_reduced'][:, :2]
+    
+    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+    
+    # True Labels
+    sns.scatterplot(x=X_vis[:,0], y=X_vis[:,1], hue=y_true, palette='viridis', ax=axes[0], s=50)
+    axes[0].set_title(f"Ground Truth (PCA First 2 Comps)")
+    
+    # Cluster Predictions
+    sns.scatterplot(x=X_vis[:,0], y=X_vis[:,1], hue=best_info['y_pred'], palette='tab10', ax=axes[1], s=50)
+    axes[1].set_title(f"GMM Clustering: PCA={best_info['dims']}, Cov={best_info['cov']}")
+    plt.tight_layout()
+    plt.show()
+
+    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+    
+    sns.lineplot(data=df, x='Dimensions', y='BIC', hue='Covariance_Type', marker='o', ax=axes[0])
+    axes[0].set_title('BIC Score vs Dimensions (Lower is Better)')
+    
+    sns.lineplot(data=df, x='Dimensions', y='Silhouette', hue='Covariance_Type', marker='o', ax=axes[1])
+    axes[1].set_title('Silhouette Score vs Dimensions (Higher is Better)')
+    plt.show()
+
+    # 3. Confusion Matrix for Best Method
+    cm = confusion_matrix(y_true, best_info['y_pred'])
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+    plt.title(f'Confusion Matrix: Best GMM (Dim={best_info["dims"]}, {best_info["cov"]})')
+    plt.xlabel('Predicted Cluster')
+    plt.ylabel('True Class')
+    plt.show()
+
+    # 4. Dimensionality Impact on Optimal Covariance (Heatmap of ARI)
+    pivot_ari = df.pivot(index='Covariance_Type', columns='Dimensions', values='ARI')
+    plt.figure(figsize=(10, 5))
+    sns.heatmap(pivot_ari, annot=True, cmap='RdYlGn', fmt='.3f')
+    plt.title('Impact of Dimensionality on Performance (ARI Score)')
+    plt.show()
+
+    # 5. BIC/AIC Curve for GMM Component Selection (Elbow Method)
+    # This is a separate mini-check: Using the BEST dimension found, vary K from 2 to 20
+    print("\nGenerating BIC/AIC Elbow Curves for optimal dimensions...")
+    best_dim = best_info['dims']
+    pca_elbow = PCA(n_components=best_dim)
+    X_elbow = pca_elbow.fit_transform(X)
+    
+    n_components_range = range(1, 15) # Adjust range as needed
+    bics = []
+    aics = []
+    
+    for n in n_components_range:
+        # Use 'full' covariance for standard elbow check
+        gmm = GMM(n_components=n, covariance_type='full')
+        gmm.fit(X_elbow)
+        bics.append(gmm.bic(X_elbow))
+        aics.append(gmm.aic(X_elbow))
+        
+    plt.figure(figsize=(10, 6))
+    plt.plot(n_components_range, bics, label='BIC', marker='o')
+    plt.plot(n_components_range, aics, label='AIC', marker='x')
+    plt.axvline(x=n_classes, color='r', linestyle='--', label='True K')
+    plt.legend()
+    plt.title(f'BIC/AIC vs Number of Components (Fixed at Dim={best_dim})')
+    plt.xlabel('Number of Components')
+    plt.ylabel('Score')
+    plt.show()
+
+results = run_experiment_2(X_train, y_train)
 
 
 # %% [markdown]
@@ -1375,7 +1524,7 @@ ae_batch_size = 32
 ae_learning_rate = 0.01
 ae_l2_lambda = 0.0
 ae_lr_decay = 0.0
-ae_activation = "sigmoid"
+ae_activation = "relu"
 
 ae_k_results = {}
 
@@ -1526,33 +1675,177 @@ plot_confusion_matrix(y, mapped_labels)
 # ## 6) GMM after Autoencoder
 
 # %%
-def experiment_6_gmm_autoencoder(
-    X, bottlenecks, AutoencoderClass, GMMClass, ae_params
-):
-    results = []
+dims = [2, 5, 10, 15, 20]
+results = []
+history_dict = {} # To store loss curves
 
-    for b in bottlenecks:
-        ae = AutoencoderClass(
-            layer_sizes=[X.shape[1], 64, 32, b, 32, 64, X.shape[1]],
-            **ae_params
-        )
-        ae.train(X)
+print("\n--- Starting Experiment 6: GMM with AE vs PCA ---")
 
-        X_latent = ae.encode(X)
+for dim in dims:
+    print(f"\nProcessing Dimension: {dim}")
+    
+    start_time = time.time()
+    pca = PCA(n_components=dim)
+    pca.fit(X)            
+    X_pca = pca.transform(X)
+    X_pca_recon = pca.inverse_transform(X_pca)
+    
+    # GMM on PCA
+    gmm_pca = GMM(n_components=2, covariance_type='full')
 
-        for cov in ["full", "tied", "diag", "spherical"]:
-            gmm = GMMClass(
-                n_components=2,
-                covariance_type=cov
-            )
-            gmm.fit(X_latent)
+    gmm_pca.fit(X_pca)
+    gmm_pca_labels = gmm_pca.predict(X_pca)
+    
+    pca_time = time.time() - start_time
+    
+    # Metrics for PCA
+    rec_error_pca = pca.reconstruction_error(X)
+    resp, likelihoods = gmm_pca._e_step(X_pca)
+    log_likelihood = likelihoods * len(X_pca)
+    # Store PCA Results
+    results.append({
+        'Method': 'PCA-GMM',
+        'Dim': dim,
+        'Silhouette': silhouette_score(X_pca, gmm_pca_labels),
+        'Davies-Bouldin': davies_bouldin_index(X_pca, gmm_pca_labels, gmm_pca.means_),
+        'Calinski-Harabasz': calinski_harabasz_index(X_pca, gmm_pca_labels, gmm_pca.means_),
+        'WCSS': wcss(X_pca, gmm_pca_labels, gmm_pca.means_),
+        'BIC': gmm_pca.bic(X_pca),
+        'AIC': gmm_pca.aic(X_pca),
+        'Log-Likelihood': log_likelihood,
+        'ARI': adjusted_rand_index(y, gmm_pca_labels),
+        'NMI': normalized_mutual_information(y, gmm_pca_labels),
+        'Purity': purity_score(y, gmm_pca_labels),
+        'Reconstruction_MSE': rec_error_pca,
+        'Time': pca_time
+    })
 
-            results.append({
-                "bottleneck": b,
-                "covariance": cov,
-                "log_likelihood": gmm.log_likelihoods_[-1]
-            })
+    # B. Autoencoder + GMM (Experiment 6)
+    start_time = time.time()
+    input_dim = X_scaled.shape[1]
+    
+    # Define Architecture: [Input -> 64 -> 32 -> Bottleneck -> 32 -> 64 -> Output]
+    layer_sizes = [input_dim, 64, 32, dim, 32, 64, input_dim]
+    
+    ae = Autoencoder(layer_sizes=layer_sizes, activation="sigmoid", learning_rate=0.001)
+    
+    # Train
+    loss_history = ae.train(X_scaled, epochs=50, batch_size=128)
+    history_dict[dim] = loss_history
+    
+    # Compress & Reconstruct
+    X_ae = ae.encode(X_scaled)
+    X_ae_recon = ae.reconstruct(X_scaled)
+    
+    # GMM on AE Latent Space
+    gmm_ae = GMM(n_components=2, covariance_type='full')
+    gmm_ae.fit(X_ae)
+    gmm_ae_labels = gmm_ae.predict(X_ae)
+    ae_time = time.time() - start_time
+    
+    results.append({
+        'Method': 'AE-GMM',
+        'Dim': dim,
+        'Silhouette': silhouette_score(X_ae, gmm_ae_labels),
+        'Davies-Bouldin': davies_bouldin_index(X_ae, gmm_ae_labels, gmm_ae.means_),
+        'Calinski-Harabasz': calinski_harabasz_index(X_ae, gmm_ae_labels, gmm_ae.means_),
+        'BIC': gmm_ae.bic(X_ae),
+        'ARI': adjusted_rand_index(y, gmm_ae_labels),
+        'NMI': normalized_mutual_information(y, gmm_ae_labels),
+        'Purity': purity_score(y, gmm_ae_labels),
+        'Reconstruction_MSE': manual_mse(X_scaled, X_ae_recon),
+        'Time': ae_time
+    })
 
-    return results
+# Convert results to DataFrame
+df_res = pd.DataFrame(results)
+
+# A. Comparison Heatmap
+plt.figure(figsize=(14, 8))
+# Pivot for heatmap: Index=Dim, Columns=Metric, Split by Method
+# We will just normalize metrics to 0-1 for heatmap visualization
+numeric_cols = df_res.columns.drop(['Method', 'Dim'])
+df_norm = df_res.copy()
+for col in numeric_cols:
+    df_norm[col] = (df_res[col] - df_res[col].min()) / (df_res[col].max() - df_res[col].min())
+
+# Create a pivot table for the heatmap (Method+Dim vs Metrics)
+pivot_heatmap = df_norm.set_index(['Method', 'Dim'])[numeric_cols]
+sns.heatmap(pivot_heatmap, cmap='viridis', annot=False)
+plt.title("Heatmap of Normalized Metrics (AE-GMM vs PCA-GMM)")
+plt.tight_layout()
+plt.show()
+
+# B. Internal Validation Metrics Comparison
+fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+metrics_to_plot = ['Silhouette', 'Davies-Bouldin', 'Calinski-Harabasz']
+
+for i, metric in enumerate(metrics_to_plot):
+    sns.lineplot(data=df_res, x='Dim', y=metric, hue='Method', marker='o', ax=axes[i])
+    axes[i].set_title(f'{metric} vs Dimensions')
+    axes[i].grid(True)
+plt.show()
+
+# C. External Validation Metrics Comparison
+fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+metrics_to_plot = ['ARI', 'NMI', 'Purity']
+
+for i, metric in enumerate(metrics_to_plot):
+    sns.lineplot(data=df_res, x='Dim', y=metric, hue='Method', marker='o', ax=axes[i])
+    axes[i].set_title(f'{metric} vs Dimensions')
+    axes[i].grid(True)
+plt.show()
+
+# D. Reconstruction Error Comparison
+plt.figure(figsize=(8, 5))
+sns.barplot(data=df_res, x='Dim', y='Reconstruction_MSE', hue='Method')
+plt.title("Reconstruction Error (MSE): AE vs PCA")
+plt.ylabel("MSE (Lower is better)")
+plt.show()
+
+# E. AE Training Loss Curves
+plt.figure(figsize=(10, 6))
+for dim, losses in history_dict.items():
+    plt.plot(losses, label=f'Bottleneck Dim {dim}')
+plt.title("Autoencoder Training Loss per Epoch")
+plt.xlabel("Epochs")
+plt.ylabel("Loss (MSE)")
+plt.legend()
+plt.grid(True)
+plt.show()
+
+# F. 2D Projections
+fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+
+# 1. PCA Plot (Left)
+pca_viz = PCA(n_components=2)
+pca_viz.fit(X_scaled)
+pca_2d = pca_viz.transform(X_scaled)
+
+sns.scatterplot(
+    x=pca_2d[:,0], y=pca_2d[:,1], 
+    hue=y, palette='viridis', alpha=0.5, ax=axes[0]
+)
+axes[0].set_title("PCA 2D Projection")
+
+# 2. Autoencoder Plot (Right) - THIS WAS MISSING
+X_latent = ae.encode(X_scaled) 
+ae_2d = X_latent[:, :2]
+
+sns.scatterplot(
+    x=ae_2d[:,0], y=ae_2d[:,1], 
+    hue=y, palette='viridis', alpha=0.5, ax=axes[1]
+)
+axes[1].set_title("Autoencoder Latent Projection (First 2 Dims)")
+
+plt.show()
+
+# 5. SUMMARY TABLES
+print("\n--- Summary Table (Averages) ---")
+print(df_res.groupby('Method')[['Silhouette', 'ARI', 'Reconstruction_MSE', 'Time']].mean())
+
+print("\n--- Best Configuration by ARI ---")
+best_row = df_res.loc[df_res['ARI'].idxmax()]
+print(best_row)
 
 
