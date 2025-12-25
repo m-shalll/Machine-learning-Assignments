@@ -229,8 +229,6 @@ class Autoencoder:
         return self.forward(X)
 
 
-
-
 # %% [markdown]
 # # Internal Metrics
 
@@ -1124,7 +1122,7 @@ def experiment_2_gmm_original(X, k_values, GMMClass):
 pca_components = [2, 5, 10, 15, 20]
 k_values = range(2, 11)
 k_inits = ["random", "kmeans++"]
-pca_k_n_runs = 10 
+pca_k_n_runs = 10
 pca_k_seed_base = 42
 
 pca_k_results = {}
@@ -1133,15 +1131,21 @@ for n_comp in pca_components:
     pca = PCA(n_components=n_comp)
     pca.fit(X)
     X_reduced = pca.transform(X)
-    
+
     pca_k_results[n_comp] = {}
-    
+
     for init in k_inits:
         pca_k_results[n_comp][init] = {}
+
         for k in k_values:
+            pca_k_results[n_comp][init][k] = {
+                "runs": [],
+                "best_run": None
+            }
+
             best_silhouette = -np.inf
             best_run = None
-            
+
             for run in range(pca_k_n_runs):
                 km = KMeans(
                     n_clusters=k,
@@ -1150,13 +1154,13 @@ for n_comp in pca_components:
                     tol=1e-4,
                     random_state=pca_k_seed_base + run
                 )
-                
+
                 labels = km.fit_predict(X_reduced)
-                
+
                 sil = silhouette_score(X_reduced, labels)
                 dbi = davies_bouldin_index(X_reduced, labels, km.centroids_)
                 chi = calinski_harabasz_index(X_reduced, labels, km.centroids_)
-                
+
                 run_result = {
                     "labels": labels,
                     "centroids": km.centroids_,
@@ -1166,42 +1170,60 @@ for n_comp in pca_components:
                     "chi": chi,
                     "n_iter": km.n_iter_
                 }
-                
+
+                pca_k_results[n_comp][init][k]["runs"].append(run_result)
+
                 if sil > best_silhouette:
                     best_silhouette = sil
                     best_run = run_result
-            
-            pca_k_results[n_comp][init][k] = {"best_run": best_run}
 
+            pca_k_results[n_comp][init][k]["best_run"] = best_run
 
-for n_components in pca_components:
+for n_comp in pca_components:
     for init in k_inits:
-        plot_elbow(pca_k_results[n_components], init, k_values)
-        plot_silhouette(pca_k_results[n_components], init, k_values)
-        plot_convergence_speed(pca_k_results[n_components], init, k_values)
-        plot_davies_bouldin(pca_k_results[n_components], init, k_values)
-        plot_calinski_harabasz(pca_k_results[n_components], init, k_values)
+        plot_elbow(pca_k_results[n_comp], init, k_values)
+        plot_silhouette(pca_k_results[n_comp], init, k_values)
+        plot_convergence_speed(pca_k_results[n_comp], init, k_values)
+        plot_davies_bouldin(pca_k_results[n_comp], init, k_values)
+        plot_calinski_harabasz(pca_k_results[n_comp], init, k_values)
 
+pca_best_per_dim = {}
+
+for n_comp in pca_components:
+    best_score = -np.inf
+    best_config = None
+
+    for init in k_inits:
+        for k in k_values:
+            sil = pca_k_results[n_comp][init][k]["best_run"]["silhouette"]
+            if sil > best_score:
+                best_score = sil
+                best_config = (init, k)
+
+    pca_best_per_dim[n_comp] = best_config
 
 pca_best_score = -np.inf
 pca_best_config = None
 
 for n_comp in pca_components:
-    for init in k_inits:
-        for k in k_values:
-            score = pca_k_results[n_comp][init][k]["best_run"]["silhouette"]
-            if score > pca_best_score:
-                pca_best_score = score
-                pca_best_config = (n_comp, init, k)
+    init, k = pca_best_per_dim[n_comp]
+    sil = pca_k_results[n_comp][init][k]["best_run"]["silhouette"]
+
+    if sil > pca_best_score:
+        pca_best_score = sil
+        pca_best_config = (n_comp, init, k)
 
 best_n, best_init, best_k = pca_best_config
 final_pca_run = pca_k_results[best_n][best_init][best_k]["best_run"]
+
+print(f"Best PCA components: {best_n}")
+print(f"Best init: {best_init}, Best k: {best_k}")
 
 print(f"ARI: {adjusted_rand_index(y, final_pca_run['labels'])}")
 print(f"NMI: {normalized_mutual_information(y, final_pca_run['labels'])}")
 print(f"Purity: {purity_score(y, final_pca_run['labels'])}")
 
-plot_contingency_table(y, final_pca_run['labels'])
+plot_contingency_table(y, final_pca_run["labels"])
 
 mapping, mapped_labels = majority_vote_mapping(
     y,
@@ -1244,32 +1266,163 @@ def experiment_4_gmm_pca(X, component_list, PCAClass, GMMClass):
 # ## 5) K-Means after Autoencoder
 
 # %%
-def experiment_5_kmeans_autoencoder(
-    X, k, bottlenecks, AutoencoderClass, ae_params
-):
-    results = []
+ae_bottlenecks = [2, 5, 10, 15, 20]
+k_values = range(2, 11)
+k_inits = ["random", "kmeans++"]
 
-    for b in bottlenecks:
-        ae = AutoencoderClass(
-            layer_sizes=[X.shape[1], 64, 32, b, 32, 64, X.shape[1]],
-            **ae_params
-        )
-        ae.train(X)
+ae_k_n_runs = 10
+ae_k_seed_base = 42
 
-        X_latent = ae.encode(X)
+ae_epochs = 100
+ae_batch_size = 32
+ae_learning_rate = 0.01
+ae_l2_lambda = 0.0
+ae_lr_decay = 0.0
+ae_activation = "relu"
 
-        km = KMeans(n_clusters=k, init="kmeans++", random_state=42)
-        km.fit(X_latent)
+ae_k_results = {}
 
-        results.append({
-            "bottleneck": b,
-            "wcss": km.inertia_,
-            "silhouette": silhouette_score(X_latent, km.labels_),
-            "reconstruction_loss": ae.compute_loss(X, ae.reconstruct(X))
-        })
+for bottleneck in ae_bottlenecks:
+    print(f"\nTraining Autoencoder with bottleneck size = {bottleneck}")
 
-    return results
+    input_dim = X.shape[1]
+    layer_sizes = [
+        input_dim,
+        bottleneck * 2,
+        bottleneck,
+        bottleneck * 2,
+        input_dim
+    ]
 
+    autoencoder = Autoencoder(
+        layer_sizes=layer_sizes,
+        activation=ae_activation,
+        learning_rate=ae_learning_rate,
+        l2_lambda=ae_l2_lambda,
+        lr_decay=ae_lr_decay
+    )
+
+    autoencoder.train(X, epochs=ae_epochs, batch_size=ae_batch_size)
+
+    X_encoded = autoencoder.encode(X)
+
+    ae_k_results[bottleneck] = {}
+
+    for init in k_inits:
+        ae_k_results[bottleneck][init] = {}
+
+        for k in k_values:
+            ae_k_results[bottleneck][init][k] = {
+                "runs": [],
+                "best_run": None
+            }
+
+            best_silhouette = -np.inf
+            best_run = None
+
+            for run in range(ae_k_n_runs):
+                km = KMeans(
+                    n_clusters=k,
+                    init=init,
+                    max_iter=300,
+                    tol=1e-4,
+                    random_state=ae_k_seed_base + run
+                )
+
+                labels = km.fit_predict(X_encoded)
+
+                if len(np.unique(labels)) < 2:
+                    continue
+
+                sil = silhouette_score(X_encoded, labels)
+                dbi = davies_bouldin_index(X_encoded, labels, km.centroids_)
+                chi = calinski_harabasz_index(X_encoded, labels, km.centroids_)
+
+                run_result = {
+                    "labels": labels,
+                    "centroids": km.centroids_,
+                    "inertia": km.inertia_,
+                    "silhouette": sil,
+                    "dbi": dbi,
+                    "chi": chi,
+                    "n_iter": km.n_iter_
+                }
+
+                ae_k_results[bottleneck][init][k]["runs"].append(run_result)
+
+                if sil > best_silhouette:
+                    best_silhouette = sil
+                    best_run = run_result
+
+            if best_run is None:
+                all_runs = ae_k_results[bottleneck][init][k]["runs"]
+                if len(all_runs) > 0:
+                    best_run = min(all_runs, key=lambda r: r["inertia"])
+                else:
+                    best_run = {
+                        "labels": labels,
+                        "centroids": km.centroids_,
+                        "inertia": km.inertia_,
+                        "silhouette": -1,
+                        "dbi": np.inf,
+                        "chi": 0,
+                        "n_iter": km.n_iter_
+                    }
+
+            ae_k_results[bottleneck][init][k]["best_run"] = best_run
+
+for bottleneck in ae_bottlenecks:
+    for init in k_inits:
+        plot_elbow(ae_k_results[bottleneck], init, k_values)
+        plot_silhouette(ae_k_results[bottleneck], init, k_values)
+        plot_convergence_speed(ae_k_results[bottleneck], init, k_values)
+        plot_davies_bouldin(ae_k_results[bottleneck], init, k_values)
+        plot_calinski_harabasz(ae_k_results[bottleneck], init, k_values)
+
+ae_best_per_bottleneck = {}
+
+for bottleneck in ae_bottlenecks:
+    best_score = -np.inf
+    best_config = None
+
+    for init in k_inits:
+        for k in k_values:
+            sil = ae_k_results[bottleneck][init][k]["best_run"]["silhouette"]
+            if sil > best_score:
+                best_score = sil
+                best_config = (init, k)
+
+    ae_best_per_bottleneck[bottleneck] = best_config
+
+ae_best_score = -np.inf
+ae_best_config = None
+
+for bottleneck in ae_bottlenecks:
+    init, k = ae_best_per_bottleneck[bottleneck]
+    sil = ae_k_results[bottleneck][init][k]["best_run"]["silhouette"]
+
+    if sil > ae_best_score:
+        ae_best_score = sil
+        ae_best_config = (bottleneck, init, k)
+
+best_bottleneck, best_init, best_k = ae_best_config
+final_ae_run = ae_k_results[best_bottleneck][best_init][best_k]["best_run"]
+
+print(f"\nBest Autoencoder bottleneck: {best_bottleneck}")
+print(f"Best init: {best_init}, Best k: {best_k}")
+
+print(f"ARI: {adjusted_rand_index(y, final_ae_run['labels'])}")
+print(f"NMI: {normalized_mutual_information(y, final_ae_run['labels'])}")
+print(f"Purity: {purity_score(y, final_ae_run['labels'])}")
+
+plot_contingency_table(y, final_ae_run["labels"])
+
+mapping, mapped_labels = majority_vote_mapping(
+    y,
+    final_ae_run["labels"]
+)
+
+plot_confusion_matrix(y, mapped_labels)
 
 
 # %% [markdown]
