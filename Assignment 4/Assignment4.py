@@ -1413,7 +1413,7 @@ def run_experiment_4(X, y):
         if n_dim > X.shape[1]:
             continue
             
-        # --- A. Dimensionality Reduction (PCA) ---
+        # Dimensionality Reduction (PCA) 
         pca = PCA(n_components=n_dim, random_state=42)
         start_pca = time.time()
         X_pca = pca.fit_transform(X)
@@ -1424,7 +1424,7 @@ def run_experiment_4(X, y):
         reconstruction_error = manual_mse(X, X_reconstructed)
         explained_variance = np.sum(pca.explained_variance_ratio_)
 
-        # --- B. GMM Grid Search ---
+        # GMM Grid Search 
         for cov_type in covariance_types:
             start_gmm = time.time()
             
@@ -1436,7 +1436,7 @@ def run_experiment_4(X, y):
             gmm_time = time.time() - start_gmm
             total_time = pca_time + gmm_time
 
-            # --- C. Compute Metrics ---
+            # Compute Metrics 
             
             # 1. Internal Validation
             sil = silhouette_score(X_pca, y_pred)
@@ -1497,7 +1497,7 @@ def run_experiment_4(X, y):
     
     return df_results
 
-# --- Visualization Logic ---
+# Visualization Logic 
 def generate_visualizations(df, best_info, X, y_true, n_classes):
     plt.style.use('seaborn-v0_8')
     
@@ -1589,7 +1589,7 @@ ae_batch_size = 32
 ae_learning_rate = 0.01
 ae_l2_lambda = 0.0
 ae_lr_decay = 0.0
-ae_activation = "sigmoid"
+ae_activation = "relu"
 
 ae_k_results = {}
 
@@ -1785,9 +1785,7 @@ for dim in dims:
         'Time': pca_time
     })
 
-    # ---------------------------
     # B. Autoencoder + GMM (Experiment 6)
-    # ---------------------------
     start_time = time.time()
     input_dim = X_scaled.shape[1]
     
@@ -1826,10 +1824,6 @@ for dim in dims:
 
 # Convert results to DataFrame
 df_res = pd.DataFrame(results)
-
-# ==========================================
-# 4. VISUALIZATION & ANALYSIS
-# ==========================================
 
 # A. Comparison Heatmap
 plt.figure(figsize=(14, 8))
@@ -1889,7 +1883,6 @@ plt.show()
 fig, axes = plt.subplots(1, 2, figsize=(16, 6))
 
 # 1. PCA Plot (Left)
-# ------------------
 pca_viz = PCA(n_components=2)
 pca_viz.fit(X_scaled)
 pca_2d = pca_viz.transform(X_scaled)
@@ -1901,9 +1894,6 @@ sns.scatterplot(
 axes[0].set_title("PCA 2D Projection")
 
 # 2. Autoencoder Plot (Right) - THIS WAS MISSING
-# ---------------------------
-# Note: Ideally we retrain a dim=2 AE here, but slicing the 
-# current high-dim model is acceptable for a quick check.
 X_latent = ae.encode(X_scaled) 
 ae_2d = X_latent[:, :2]
 
@@ -1915,9 +1905,7 @@ axes[1].set_title("Autoencoder Latent Projection (First 2 Dims)")
 
 plt.show()
 
-# ==========================================
 # 5. SUMMARY TABLES
-# ==========================================
 print("\n--- Summary Table (Averages) ---")
 print(df_res.groupby('Method')[['Silhouette', 'ARI', 'Reconstruction_MSE', 'Time']].mean())
 
