@@ -1074,9 +1074,9 @@ for init in k_inits:
 k_best_init, k_best_k = k_best_config
 k_best_run = k_results[k_best_init][k_best_k]["best_run"]
 
-print(adjusted_rand_index(y, k_best_run["labels"]))
-print(normalized_mutual_information(y, k_best_run["labels"]))
-print(purity_score(y, k_best_run["labels"]))
+print(f"ARI: {adjusted_rand_index(y, k_best_run['labels'])}")
+print(f"NMI: {normalized_mutual_information(y, k_best_run['labels'])}")
+print(f"Purity: {purity_score(y, k_best_run['labels'])}")
 
 plot_contingency_table(y, k_best_run["labels"])
 
@@ -1121,26 +1121,94 @@ def experiment_2_gmm_original(X, k_values, GMMClass):
 # ## 3) K-Means after PCA
 
 # %%
-def experiment_3_kmeans_pca(X, k, component_list, PCAClass):
-    results = []
+pca_components = [2, 5, 10, 15, 20]
+k_values = range(2, 11)
+k_inits = ["random", "kmeans++"]
+pca_k_n_runs = 10 
+pca_k_seed_base = 42
 
-    for n_comp in component_list:
-        pca = PCAClass(n_components=n_comp)
-        pca.fit(X)
-        X_pca = pca.transform(X)
+pca_k_results = {}
 
-        km = KMeans(n_clusters=k, init="kmeans++", random_state=42)
-        km.fit(X_pca)
+for n_comp in pca_components:
+    pca = PCA(n_components=n_comp)
+    pca.fit(X)
+    X_reduced = pca.transform(X)
+    
+    pca_k_results[n_comp] = {}
+    
+    for init in k_inits:
+        pca_k_results[n_comp][init] = {}
+        for k in k_values:
+            best_silhouette = -np.inf
+            best_run = None
+            
+            for run in range(pca_k_n_runs):
+                km = KMeans(
+                    n_clusters=k,
+                    init=init,
+                    max_iter=300,
+                    tol=1e-4,
+                    random_state=pca_k_seed_base + run
+                )
+                
+                labels = km.fit_predict(X_reduced)
+                
+                sil = silhouette_score(X_reduced, labels)
+                dbi = davies_bouldin_index(X_reduced, labels, km.centroids_)
+                chi = calinski_harabasz_index(X_reduced, labels, km.centroids_)
+                
+                run_result = {
+                    "labels": labels,
+                    "centroids": km.centroids_,
+                    "inertia": km.inertia_,
+                    "silhouette": sil,
+                    "dbi": dbi,
+                    "chi": chi,
+                    "n_iter": km.n_iter_
+                }
+                
+                if sil > best_silhouette:
+                    best_silhouette = sil
+                    best_run = run_result
+            
+            pca_k_results[n_comp][init][k] = {"best_run": best_run}
 
-        results.append({
-            "components": n_comp,
-            "wcss": km.inertia_,
-            "silhouette": silhouette_score(X_pca, km.labels_),
-            "reconstruction_error": pca.reconstruction_error(X)
-        })
 
-    return results
+for n_components in pca_components:
+    for init in k_inits:
+        plot_elbow(pca_k_results[n_components], init, k_values)
+        plot_silhouette(pca_k_results[n_components], init, k_values)
+        plot_convergence_speed(pca_k_results[n_components], init, k_values)
+        plot_davies_bouldin(pca_k_results[n_components], init, k_values)
+        plot_calinski_harabasz(pca_k_results[n_components], init, k_values)
 
+
+pca_best_score = -np.inf
+pca_best_config = None
+
+for n_comp in pca_components:
+    for init in k_inits:
+        for k in k_values:
+            score = pca_k_results[n_comp][init][k]["best_run"]["silhouette"]
+            if score > pca_best_score:
+                pca_best_score = score
+                pca_best_config = (n_comp, init, k)
+
+best_n, best_init, best_k = pca_best_config
+final_pca_run = pca_k_results[best_n][best_init][best_k]["best_run"]
+
+print(f"ARI: {adjusted_rand_index(y, final_pca_run['labels'])}")
+print(f"NMI: {normalized_mutual_information(y, final_pca_run['labels'])}")
+print(f"Purity: {purity_score(y, final_pca_run['labels'])}")
+
+plot_contingency_table(y, final_pca_run['labels'])
+
+mapping, mapped_labels = majority_vote_mapping(
+    y,
+    final_pca_run["labels"]
+)
+
+plot_confusion_matrix(y, mapped_labels)
 
 
 # %% [markdown]
