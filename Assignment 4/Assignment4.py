@@ -81,28 +81,29 @@ class PCA:
 class Activation:
     @staticmethod
     def relu(x):
-        return np.maximum(0, x)
+        return np.maximum(0, x)  # ReLU: sets negative values to 0, keeps positives
 
     @staticmethod
     def relu_derivative(x):
-        return (x > 0).astype(float)
+        return (x > 0).astype(float)  # derivative: 1 if x>0 else 0
 
     @staticmethod
     def sigmoid(x):
-        return 1 / (1 + np.exp(-x))
+        return 1 / (1 + np.exp(-x))  # Sigmoid: squashes values to [0,1]
 
     @staticmethod
     def sigmoid_derivative(x):
-        s = Activation.sigmoid(x)
-        return s * (1 - s)
+        s = Activation.sigmoid(x)  # compute sigmoid
+        return s * (1 - s)         # derivative formula: s*(1-s)
 
     @staticmethod
     def tanh(x):
-        return np.tanh(x)
+        return np.tanh(x)  # Tanh: squashes values to [-1,1]
 
     @staticmethod
     def tanh_derivative(x):
-        return 1 - np.tanh(x) ** 2
+        return 1 - np.tanh(x) ** 2  # derivative: 1 - tanh^2(x)
+
 
 class Autoencoder:
     def __init__(
@@ -113,19 +114,19 @@ class Autoencoder:
         l2_lambda=0.0,
         lr_decay=0.0
     ):
-        self.layer_sizes = layer_sizes
-        self.learning_rate = learning_rate
-        self.initial_lr = learning_rate
-        self.l2_lambda = l2_lambda
-        self.lr_decay = lr_decay
+        self.layer_sizes = layer_sizes  # list of layer sizes
+        self.learning_rate = learning_rate  # initial learning rate
+        self.initial_lr = learning_rate    # store initial LR for decay
+        self.l2_lambda = l2_lambda        # L2 regularization strength
+        self.lr_decay = lr_decay          # learning rate decay factor
 
-        self.weights = []
-        self.biases = []
+        self.weights = []  # list to store weight matrices
+        self.biases = []   # list to store bias vectors
 
-        self.activations = []
-        self.z_values = []
+        self.activations = []  # store activations during forward pass
+        self.z_values = []     # store linear outputs (z=W*X+b)
 
-        # Activation selection
+        # choose activation function
         if activation == "relu":
             self.act = Activation.relu
             self.act_deriv = Activation.relu_derivative
@@ -138,96 +139,98 @@ class Autoencoder:
         else:
             raise ValueError("Unsupported activation")
 
-        self._initialize_parameters()
+        self._initialize_parameters()  # initialize weights and biases
 
     def _initialize_parameters(self):
         for i in range(len(self.layer_sizes) - 1):
+            # He initialization: scale by sqrt(2/fan_in)
             weight = np.random.randn(
                 self.layer_sizes[i],
                 self.layer_sizes[i + 1]
             ) * np.sqrt(2 / self.layer_sizes[i])
-            bias = np.zeros((1, self.layer_sizes[i + 1]))
+            bias = np.zeros((1, self.layer_sizes[i + 1]))  # biases start at 0
             self.weights.append(weight)
             self.biases.append(bias)
 
     def forward(self, X):
-        self.activations = [X]
-        self.z_values = []
+        self.activations = [X]  # store input as first activation
+        self.z_values = []       # reset z values
 
         for W, b in zip(self.weights, self.biases):
-            z = np.dot(self.activations[-1], W) + b
+            z = np.dot(self.activations[-1], W) + b  # linear combination
             self.z_values.append(z)
-            a = self.act(z)
+            a = self.act(z)                          # apply activation
             self.activations.append(a)
 
-        return self.activations[-1]
+        return self.activations[-1]  # return output layer
 
     def compute_loss(self, X, X_hat):
-        mse = np.mean((X - X_hat) ** 2)
-        l2_penalty = self.l2_lambda * sum(np.sum(W ** 2) for W in self.weights)
-        return mse + l2_penalty
+        mse = np.mean((X - X_hat) ** 2)  # mean squared error
+        l2_penalty = self.l2_lambda * sum(np.sum(W ** 2) for W in self.weights)  # L2
+        return mse + l2_penalty  # total loss
 
     def backward(self, X):
         grads_W = []
         grads_b = []
 
-        # MSE loss derivative
+        # derivative of MSE loss w.r.t output layer
         delta = (self.activations[-1] - X) * self.act_deriv(self.z_values[-1])
 
         for i in reversed(range(len(self.weights))):
-            dW = np.dot(self.activations[i].T, delta)
-            dB = np.sum(delta, axis=0, keepdims=True)
+            dW = np.dot(self.activations[i].T, delta)  # weight gradient
+            dB = np.sum(delta, axis=0, keepdims=True)  # bias gradient
 
-            # L2 regularization
-            dW += self.l2_lambda * self.weights[i]
+            dW += self.l2_lambda * self.weights[i]    # add L2 gradient
 
-            grads_W.insert(0, dW)
+            grads_W.insert(0, dW)  # store gradients in correct order
             grads_b.insert(0, dB)
 
             if i != 0:
+                # propagate delta to previous layer
                 delta = np.dot(delta, self.weights[i].T) * self.act_deriv(self.z_values[i - 1])
 
         return grads_W, grads_b
 
     def update_parameters(self, grads_W, grads_b):
         for i in range(len(self.weights)):
-            self.weights[i] -= self.learning_rate * grads_W[i]
-            self.biases[i] -= self.learning_rate * grads_b[i]
+            self.weights[i] -= self.learning_rate * grads_W[i]  # update weights
+            self.biases[i] -= self.learning_rate * grads_b[i]   # update biases
 
     def train(self, X, epochs=100, batch_size=32):
         n_samples = X.shape[0]
         history  = []
         for epoch in range(epochs):
-            indices = np.random.permutation(n_samples)
+            indices = np.random.permutation(n_samples)  # shuffle data
             X_shuffled = X[indices]
 
             for start in range(0, n_samples, batch_size):
                 end = start + batch_size
-                batch = X_shuffled[start:end]
+                batch = X_shuffled[start:end]  # get batch
 
-                X_hat = self.forward(batch)
-                grads_W, grads_b = self.backward(batch)
-                self.update_parameters(grads_W, grads_b)
+                X_hat = self.forward(batch)          # forward pass
+                grads_W, grads_b = self.backward(batch)  # backward pass
+                self.update_parameters(grads_W, grads_b)  # gradient descent step
 
-            # Learning rate scheduling
+            # decay learning rate
             self.learning_rate = self.initial_lr / (1 + self.lr_decay * epoch)
             current_loss = self.compute_loss(X, self.forward(X))
             history.append(current_loss) # Add to list
 
             if epoch % 10 == 0:
-                loss = self.compute_loss(X, self.forward(X))
+                loss = self.compute_loss(X, self.forward(X))  # compute full loss
                 print(f"Epoch {epoch}, Loss: {loss:.6f}")
 
         return history
 
     def encode(self, X):
+        # pass only through encoder layers (first half)
         for i in range(len(self.weights) // 2):
             X = self.act(np.dot(X, self.weights[i]) + self.biases[i])
         return X
 
     def reconstruct(self, X):
+        # pass through full autoencoder
         return self.forward(X)
-
 
 
 # %% [markdown]
@@ -240,33 +243,42 @@ class Autoencoder:
 def silhouette_score(X, labels):
     X = np.asarray(X)
     labels = np.asarray(labels)
+    n_samples = X.shape[0]  # total number of samples
+    unique_labels = np.unique(labels)  # list of unique cluster labels
 
-    n_samples = X.shape[0]
-    unique_labels = np.unique(labels)
-
+    # Compute pairwise distances between all points
     distances = np.linalg.norm(
+        # Subtract → get difference vectors between all points
         X[:, np.newaxis, :] - X[np.newaxis, :, :],
+        # axis=2 → compute norm along feature axis for each pair
         axis=2
     )
 
-    silhouette_values = np.zeros(n_samples)
+    silhouette_values = np.zeros(n_samples)  # store silhouette for each point
 
+    # Loop through each point
     for i in range(n_samples):
+        # Mask for points in the same cluster
         same_cluster = labels == labels[i]
+        # Mask for points in other clusters
         other_clusters = unique_labels[unique_labels != labels[i]]
 
+        # Compute average distance to points in the same cluster (a_i)
         if np.sum(same_cluster) > 1:
             a_i = np.mean(distances[i, same_cluster & (np.arange(n_samples) != i)])
         else:
             a_i = 0.0
 
+        # Compute minimum average distance to points in other clusters (b_i)
         b_i = np.inf
         for cluster in other_clusters:
             cluster_mask = labels == cluster
             b_i = min(b_i, np.mean(distances[i, cluster_mask]))
 
+        # Silhouette for this point
         silhouette_values[i] = (b_i - a_i) / max(a_i, b_i)
 
+    # Return average silhouette score over all points
     return np.mean(silhouette_values)
 
 
@@ -279,13 +291,15 @@ def davies_bouldin_index(X, labels, centroids):
     labels = np.asarray(labels)
     centroids = np.asarray(centroids)
 
-    k = centroids.shape[0]
+    k = centroids.shape[0] # number of clusters
 
+    # Compute S_i: average distance of points in cluster i to its centroid
     S = np.zeros(k)
     for i in range(k):
         cluster_points = X[labels == i]
         S[i] = np.mean(np.linalg.norm(cluster_points - centroids[i], axis=1))
 
+    # Compute distance between all centroids
     centroid_distances = np.linalg.norm(
         centroids[:, np.newaxis, :] - centroids[np.newaxis, :, :],
         axis=2
@@ -293,12 +307,15 @@ def davies_bouldin_index(X, labels, centroids):
 
     dbi = 0.0
     for i in range(k):
+        # For cluster i, compute R_ij for all other clusters j
         R_ij = []
         for j in range(k):
             if i != j:
                 R_ij.append((S[i] + S[j]) / centroid_distances[i, j])
+        # Take max R_ij for cluster i
         dbi += max(R_ij)
 
+     # Average over all clusters
     return dbi / k
 
 
@@ -314,18 +331,22 @@ def calinski_harabasz_index(X, labels, centroids):
     n_samples = X.shape[0]
     k = centroids.shape[0]
 
+    # Overall mean of all points
     overall_mean = np.mean(X, axis=0)
 
+    # Compute W: sum of squared distances of points to their cluster centroid
     W = 0.0
     for i in range(k):
         cluster_points = X[labels == i]
         W += np.sum((cluster_points - centroids[i]) ** 2)
 
+    # Compute B: sum over clusters of n_i * squared distance of centroid to overall mean
     B = 0.0
     for i in range(k):
         n_i = np.sum(labels == i)
         B += n_i * np.sum((centroids[i] - overall_mean) ** 2)
 
+    # Calinski-Harabasz index
     return (B / (k - 1)) / (W / (n_samples - k))
 
 
@@ -338,6 +359,7 @@ def wcss(X, labels, centroids):
     labels = np.asarray(labels)
     centroids = np.asarray(centroids)
 
+    # Sum of squared distances of points to their cluster centroid
     total = 0.0
     for i in range(centroids.shape[0]):
         cluster_points = X[labels == i]
@@ -357,18 +379,19 @@ def contingency_table(labels_true, labels_pred):
     labels_true = np.asarray(labels_true)
     labels_pred = np.asarray(labels_pred)
 
-    clusters = np.unique(labels_pred)
-    classes = np.unique(labels_true)
+    clusters = np.unique(labels_pred) # get unique cluster IDs
+    classes = np.unique(labels_true) # get unique true class labels
 
     table = np.zeros((clusters.size, classes.size), dtype=int)
 
     for i, cluster in enumerate(clusters):
         for j, cls in enumerate(classes):
+            # count how many points in this cluster have this true label
             table[i, j] = np.sum(
                 (labels_pred == cluster) & (labels_true == cls)
             )
 
-    return table
+    return table # rows=clusters, columns=true classes
 
 
 # %% [markdown]
@@ -376,21 +399,22 @@ def contingency_table(labels_true, labels_pred):
 
 # %%
 def nC2(n):
-    return n * (n - 1) / 2
+    return n * (n - 1) / 2  # number of ways to choose 2 items from n
 
 def adjusted_rand_index(labels_true, labels_pred):
     table = contingency_table(labels_true, labels_pred)
-    n = np.sum(table)
+    n = np.sum(table)  # total number of points
 
-    sum_nij = np.sum(nC2(table))
-    sum_ai = np.sum(nC2(np.sum(table, axis=1)))
-    sum_bj = np.sum(nC2(np.sum(table, axis=0)))
-    total_pairs = nC2(n)
+    sum_nij = np.sum(nC2(table))               # sum of combinations within each cell
+    sum_ai = np.sum(nC2(np.sum(table, axis=1)))  # sum over row totals
+    sum_bj = np.sum(nC2(np.sum(table, axis=0)))  # sum over column totals
+    total_pairs = nC2(n)                         # total number of pairs
 
-    expected_index = (sum_ai * sum_bj) / total_pairs
-    max_index = 0.5 * (sum_ai + sum_bj)
+    expected_index = (sum_ai * sum_bj) / total_pairs  # expected number of agreements by chance
+    max_index = 0.5 * (sum_ai + sum_bj)               # maximum possible agreements
 
-    return (sum_nij - expected_index) / (max_index - expected_index)
+    return (sum_nij - expected_index) / (max_index - expected_index)  # scale [-1,1]
+
 
 
 # %% [markdown]
@@ -399,22 +423,23 @@ def adjusted_rand_index(labels_true, labels_pred):
 # %%
 def normalized_mutual_information(labels_true, labels_pred, eps=1e-10):
     table = contingency_table(labels_true, labels_pred)
-    n = np.sum(table)
+    n = np.sum(table)  # total points
 
-    P_ij = table / n
-    P_i = np.sum(P_ij, axis=1)
-    P_j = np.sum(P_ij, axis=0)
+    P_ij = table / n      # joint probability of cluster i and class j
+    P_i = np.sum(P_ij, axis=1)  # probability of cluster i
+    P_j = np.sum(P_ij, axis=0)  # probability of class j
 
     MI = 0.0
     for i in range(P_ij.shape[0]):
         for j in range(P_ij.shape[1]):
             if P_ij[i, j] > 0:
+                # mutual information contribution for this cell
                 MI += P_ij[i, j] * np.log(P_ij[i, j] / (P_i[i] * P_j[j] + eps))
 
-    H_i = -np.sum(P_i * np.log(P_i + eps))
-    H_j = -np.sum(P_j * np.log(P_j + eps))
+    H_i = -np.sum(P_i * np.log(P_i + eps))  # entropy of clusters
+    H_j = -np.sum(P_j * np.log(P_j + eps))  # entropy of true labels
 
-    return MI / np.sqrt(H_i * H_j)
+    return MI / np.sqrt(H_i * H_j)  # normalized to [0,1]
 
 
 # %% [markdown]
@@ -423,6 +448,7 @@ def normalized_mutual_information(labels_true, labels_pred, eps=1e-10):
 # %%
 def purity_score(labels_true, labels_pred):
     table = contingency_table(labels_true, labels_pred)
+    # sum the largest counts in each cluster and divide by total points
     return np.sum(np.max(table, axis=1)) / np.sum(table)
 
 
@@ -441,10 +467,10 @@ def majority_vote_mapping(labels_true, labels_pred):
         true_labels_in_cluster = labels_true[labels_pred == cluster]
 
         values, counts = np.unique(true_labels_in_cluster, return_counts=True)
-        majority_label = values[np.argmax(counts)]
+        majority_label = values[np.argmax(counts)] # pick most frequent true label
 
         mapping[cluster] = majority_label
-        mapped_predictions[labels_pred == cluster] = majority_label
+        mapped_predictions[labels_pred == cluster] = majority_label # assign majority to cluster
 
     return mapping, mapped_predictions
 
@@ -862,6 +888,7 @@ X_train, X_test, y_train, y_test = manual_train_test_split(X, y, test_ratio=0.2)
 
 # %%
 def plot_elbow(results, init, k_values):
+    # extract the inertia of the best run for each k
     inertias = [
         results[init][k]["best_run"]["inertia"]
         for k in k_values
@@ -875,9 +902,10 @@ def plot_elbow(results, init, k_values):
     plt.show()
 
 
-
 # %%
 def plot_silhouette(results, init, k_values):
+    # extract the silhouette score of the best run for each k
+    # higher silhouette score is better
     silhouettes = [
         results[init][k]["best_run"]["silhouette"]
         for k in k_values
@@ -891,9 +919,43 @@ def plot_silhouette(results, init, k_values):
     plt.show()
 
 
+# %%
+def plot_davies_bouldin(results, init, k_values):
+    # extract the davies-bouldin index of the best run for each k
+    # lower dbi is better
+    dbi_scores = [
+        results[init][k]["best_run"]["dbi"]
+        for k in k_values
+    ]
+
+    plt.figure()
+    plt.plot(list(k_values), dbi_scores, marker='o')
+    plt.xlabel("Number of clusters (k)")
+    plt.ylabel("Davies-Bouldin Index")
+    plt.title(f"Davies-Bouldin Index vs k ({init} initialization)")
+    plt.show()
+
+
+# %%
+def plot_calinski_harabasz(results, init, k_values):
+    # extract the calinski-harabasz index of the best run for each k
+    # higher chi is better
+    chi_scores = [
+        results[init][k]["best_run"]["chi"]
+        for k in k_values
+    ]
+
+    plt.figure()
+    plt.plot(list(k_values), chi_scores, marker='o')
+    plt.xlabel("Number of clusters (k)")
+    plt.ylabel("Calinski-Harabasz Index")
+    plt.title(f"Calinski-Harabasz Index vs k ({init} initialization)")
+    plt.show()
+
 
 # %%
 def plot_convergence_speed(results, init, k_values):
+    # extract the number of iterations to converge for the best run for each k
     iterations = [
         results[init][k]["best_run"]["n_iter"]
         for k in k_values
@@ -907,9 +969,9 @@ def plot_convergence_speed(results, init, k_values):
     plt.show()
 
 
-
 # %%
 def plot_contingency_table(labels_true, labels_pred):
+    # compute contingency table where the rows are clusters and columns are true labels
     table = contingency_table(labels_true, labels_pred)
 
     plt.figure()
@@ -966,14 +1028,13 @@ def plot_confusion_matrix(labels_true, labels_pred_mapped):
     plt.show()
 
 
-
 # %% [markdown]
 # ## 1) K-Means on original data
 
 # %%
 k_values = range(2, 11)
 k_inits = ["random", "kmeans++"]
-k_n_runs = 10
+k_n_runs = 10 # number of independent runs per (k, init) configuration
 k_random_seed_base = 42
 
 k_results = {}
@@ -1026,6 +1087,8 @@ for init in k_inits:
 for init in k_inits:
     plot_elbow(k_results, init, k_values)
     plot_silhouette(k_results, init, k_values)
+    plot_davies_bouldin(k_results, init, k_values)
+    plot_calinski_harabasz(k_results, init, k_values)
     plot_convergence_speed(k_results, init, k_values)
 
 k_best_config = None
@@ -1040,6 +1103,10 @@ for init in k_inits:
 
 k_best_init, k_best_k = k_best_config
 k_best_run = k_results[k_best_init][k_best_k]["best_run"]
+
+print(f"ARI: {adjusted_rand_index(y, k_best_run['labels'])}")
+print(f"NMI: {normalized_mutual_information(y, k_best_run['labels'])}")
+print(f"Purity: {purity_score(y, k_best_run['labels'])}")
 
 plot_contingency_table(y, k_best_run["labels"])
 
@@ -1209,26 +1276,118 @@ results = run_experiment_2(X_train, y_train)
 # ## 3) K-Means after PCA
 
 # %%
-def experiment_3_kmeans_pca(X, k, component_list, PCAClass):
-    results = []
+pca_components = [2, 5, 10, 15, 20]
+k_values = range(2, 11)
+k_inits = ["random", "kmeans++"]
+pca_k_n_runs = 10
+pca_k_seed_base = 42
 
-    for n_comp in component_list:
-        pca = PCAClass(n_components=n_comp)
-        pca.fit(X)
-        X_pca = pca.transform(X)
+pca_k_results = {}
 
-        km = KMeans(n_clusters=k, init="kmeans++", random_state=42)
-        km.fit(X_pca)
+for n_comp in pca_components:
+    pca = PCA(n_components=n_comp)
+    pca.fit(X)
+    X_reduced = pca.transform(X)
 
-        results.append({
-            "components": n_comp,
-            "wcss": km.inertia_,
-            "silhouette": silhouette_score(X_pca, km.labels_),
-            "reconstruction_error": pca.reconstruction_error(X)
-        })
+    pca_k_results[n_comp] = {}
 
-    return results
+    for init in k_inits:
+        pca_k_results[n_comp][init] = {}
 
+        for k in k_values:
+            pca_k_results[n_comp][init][k] = {
+                "runs": [],
+                "best_run": None
+            }
+
+            best_silhouette = -np.inf
+            best_run = None
+
+            for run in range(pca_k_n_runs):
+                km = KMeans(
+                    n_clusters=k,
+                    init=init,
+                    max_iter=300,
+                    tol=1e-4,
+                    random_state=pca_k_seed_base + run
+                )
+
+                labels = km.fit_predict(X_reduced)
+
+                sil = silhouette_score(X_reduced, labels)
+                dbi = davies_bouldin_index(X_reduced, labels, km.centroids_)
+                chi = calinski_harabasz_index(X_reduced, labels, km.centroids_)
+
+                run_result = {
+                    "labels": labels,
+                    "centroids": km.centroids_,
+                    "inertia": km.inertia_,
+                    "silhouette": sil,
+                    "dbi": dbi,
+                    "chi": chi,
+                    "n_iter": km.n_iter_
+                }
+
+                pca_k_results[n_comp][init][k]["runs"].append(run_result)
+
+                if sil > best_silhouette:
+                    best_silhouette = sil
+                    best_run = run_result
+
+            pca_k_results[n_comp][init][k]["best_run"] = best_run
+
+for n_comp in pca_components:
+    for init in k_inits:
+        plot_elbow(pca_k_results[n_comp], init, k_values)
+        plot_silhouette(pca_k_results[n_comp], init, k_values)
+        plot_convergence_speed(pca_k_results[n_comp], init, k_values)
+        plot_davies_bouldin(pca_k_results[n_comp], init, k_values)
+        plot_calinski_harabasz(pca_k_results[n_comp], init, k_values)
+
+pca_best_per_dim = {}
+
+for n_comp in pca_components:
+    best_score = -np.inf
+    best_config = None
+
+    for init in k_inits:
+        for k in k_values:
+            sil = pca_k_results[n_comp][init][k]["best_run"]["silhouette"]
+            if sil > best_score:
+                best_score = sil
+                best_config = (init, k)
+
+    pca_best_per_dim[n_comp] = best_config
+
+pca_best_score = -np.inf
+pca_best_config = None
+
+for n_comp in pca_components:
+    init, k = pca_best_per_dim[n_comp]
+    sil = pca_k_results[n_comp][init][k]["best_run"]["silhouette"]
+
+    if sil > pca_best_score:
+        pca_best_score = sil
+        pca_best_config = (n_comp, init, k)
+
+best_n, best_init, best_k = pca_best_config
+final_pca_run = pca_k_results[best_n][best_init][best_k]["best_run"]
+
+print(f"Best PCA components: {best_n}")
+print(f"Best init: {best_init}, Best k: {best_k}")
+
+print(f"ARI: {adjusted_rand_index(y, final_pca_run['labels'])}")
+print(f"NMI: {normalized_mutual_information(y, final_pca_run['labels'])}")
+print(f"Purity: {purity_score(y, final_pca_run['labels'])}")
+
+plot_contingency_table(y, final_pca_run["labels"])
+
+mapping, mapped_labels = majority_vote_mapping(
+    y,
+    final_pca_run["labels"]
+)
+
+plot_confusion_matrix(y, mapped_labels)
 
 
 # %% [markdown]
@@ -1418,32 +1577,163 @@ results = run_experiment_2(X_train, y_train)
 # ## 5) K-Means after Autoencoder
 
 # %%
-def experiment_5_kmeans_autoencoder(
-    X, k, bottlenecks, AutoencoderClass, ae_params
-):
-    results = []
+ae_bottlenecks = [2, 5, 10, 15, 20]
+k_values = range(2, 11)
+k_inits = ["random", "kmeans++"]
 
-    for b in bottlenecks:
-        ae = AutoencoderClass(
-            layer_sizes=[X.shape[1], 64, 32, b, 32, 64, X.shape[1]],
-            **ae_params
-        )
-        ae.train(X)
+ae_k_n_runs = 10
+ae_k_seed_base = 42
 
-        X_latent = ae.encode(X)
+ae_epochs = 100
+ae_batch_size = 32
+ae_learning_rate = 0.01
+ae_l2_lambda = 0.0
+ae_lr_decay = 0.0
+ae_activation = "relu"
 
-        km = KMeans(n_clusters=k, init="kmeans++", random_state=42)
-        km.fit(X_latent)
+ae_k_results = {}
 
-        results.append({
-            "bottleneck": b,
-            "wcss": km.inertia_,
-            "silhouette": silhouette_score(X_latent, km.labels_),
-            "reconstruction_loss": ae.compute_loss(X, ae.reconstruct(X))
-        })
+for bottleneck in ae_bottlenecks:
+    print(f"\nTraining Autoencoder with bottleneck size = {bottleneck}")
 
-    return results
+    input_dim = X.shape[1]
+    layer_sizes = [
+        input_dim,
+        bottleneck * 2,
+        bottleneck,
+        bottleneck * 2,
+        input_dim
+    ]
 
+    autoencoder = Autoencoder(
+        layer_sizes=layer_sizes,
+        activation=ae_activation,
+        learning_rate=ae_learning_rate,
+        l2_lambda=ae_l2_lambda,
+        lr_decay=ae_lr_decay
+    )
+
+    autoencoder.train(X, epochs=ae_epochs, batch_size=ae_batch_size)
+
+    X_encoded = autoencoder.encode(X)
+
+    ae_k_results[bottleneck] = {}
+
+    for init in k_inits:
+        ae_k_results[bottleneck][init] = {}
+
+        for k in k_values:
+            ae_k_results[bottleneck][init][k] = {
+                "runs": [],
+                "best_run": None
+            }
+
+            best_silhouette = -np.inf
+            best_run = None
+
+            for run in range(ae_k_n_runs):
+                km = KMeans(
+                    n_clusters=k,
+                    init=init,
+                    max_iter=300,
+                    tol=1e-4,
+                    random_state=ae_k_seed_base + run
+                )
+
+                labels = km.fit_predict(X_encoded)
+
+                if len(np.unique(labels)) < 2:
+                    continue
+
+                sil = silhouette_score(X_encoded, labels)
+                dbi = davies_bouldin_index(X_encoded, labels, km.centroids_)
+                chi = calinski_harabasz_index(X_encoded, labels, km.centroids_)
+
+                run_result = {
+                    "labels": labels,
+                    "centroids": km.centroids_,
+                    "inertia": km.inertia_,
+                    "silhouette": sil,
+                    "dbi": dbi,
+                    "chi": chi,
+                    "n_iter": km.n_iter_
+                }
+
+                ae_k_results[bottleneck][init][k]["runs"].append(run_result)
+
+                if sil > best_silhouette:
+                    best_silhouette = sil
+                    best_run = run_result
+
+            if best_run is None:
+                all_runs = ae_k_results[bottleneck][init][k]["runs"]
+                if len(all_runs) > 0:
+                    best_run = min(all_runs, key=lambda r: r["inertia"])
+                else:
+                    best_run = {
+                        "labels": labels,
+                        "centroids": km.centroids_,
+                        "inertia": km.inertia_,
+                        "silhouette": -1,
+                        "dbi": np.inf,
+                        "chi": 0,
+                        "n_iter": km.n_iter_
+                    }
+
+            ae_k_results[bottleneck][init][k]["best_run"] = best_run
+
+for bottleneck in ae_bottlenecks:
+    for init in k_inits:
+        plot_elbow(ae_k_results[bottleneck], init, k_values)
+        plot_silhouette(ae_k_results[bottleneck], init, k_values)
+        plot_convergence_speed(ae_k_results[bottleneck], init, k_values)
+        plot_davies_bouldin(ae_k_results[bottleneck], init, k_values)
+        plot_calinski_harabasz(ae_k_results[bottleneck], init, k_values)
+
+ae_best_per_bottleneck = {}
+
+for bottleneck in ae_bottlenecks:
+    best_score = -np.inf
+    best_config = None
+
+    for init in k_inits:
+        for k in k_values:
+            sil = ae_k_results[bottleneck][init][k]["best_run"]["silhouette"]
+            if sil > best_score:
+                best_score = sil
+                best_config = (init, k)
+
+    ae_best_per_bottleneck[bottleneck] = best_config
+
+ae_best_score = -np.inf
+ae_best_config = None
+
+for bottleneck in ae_bottlenecks:
+    init, k = ae_best_per_bottleneck[bottleneck]
+    sil = ae_k_results[bottleneck][init][k]["best_run"]["silhouette"]
+
+    if sil > ae_best_score:
+        ae_best_score = sil
+        ae_best_config = (bottleneck, init, k)
+
+best_bottleneck, best_init, best_k = ae_best_config
+final_ae_run = ae_k_results[best_bottleneck][best_init][best_k]["best_run"]
+
+print(f"\nBest Autoencoder bottleneck: {best_bottleneck}")
+print(f"Best init: {best_init}, Best k: {best_k}")
+
+print(f"ARI: {adjusted_rand_index(y, final_ae_run['labels'])}")
+print(f"NMI: {normalized_mutual_information(y, final_ae_run['labels'])}")
+print(f"Purity: {purity_score(y, final_ae_run['labels'])}")
+
+plot_contingency_table(y, final_ae_run["labels"])
+
+mapping, mapped_labels = majority_vote_mapping(
+    y,
+    final_ae_run["labels"]
+)
+
+plot_confusion_matrix(y, mapped_labels)
 
 
 # %% [markdown]
